@@ -775,6 +775,7 @@ function AppContent() {
         biometricLabel={biometrics.biometricTypeLabel}
         authError={biometrics.authError}
         onUnlock={() => void biometrics.promptUnlock()}
+        onManualUnlock={() => biometrics.unlockManually()}
         onLogout={() => void auth.logout()}
       />
     );

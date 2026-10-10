@@ -8,6 +8,7 @@ interface BiometricLockOverlayProps {
   biometricLabel: string;
   authError?: string | null;
   onUnlock: () => void;
+  onManualUnlock?: () => void;
   onLogout: () => void;
 }
 
@@ -15,6 +16,7 @@ export function BiometricLockOverlay({
   biometricLabel,
   authError,
   onUnlock,
+  onManualUnlock,
   onLogout,
 }: BiometricLockOverlayProps) {
   const { colors, isDark } = useTheme();
@@ -68,6 +70,19 @@ export function BiometricLockOverlay({
           />
           <Text style={styles.unlockButtonText}>Unlock with {biometricLabel}</Text>
         </TouchableOpacity>
+
+        {/* Manual Unlock Fallback */}
+        {onManualUnlock ? (
+          <TouchableOpacity
+            style={[styles.switchButton, { marginBottom: 6 }]}
+            activeOpacity={0.7}
+            onPress={onManualUnlock}
+          >
+            <Text style={[styles.switchButtonText, { color: COLORS.primary, fontWeight: "700" }]}>
+              Enter App / Skip Biometrics
+            </Text>
+          </TouchableOpacity>
+        ) : null}
 
         {/* Sign Out Fallback */}
         <TouchableOpacity

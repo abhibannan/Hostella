@@ -7,13 +7,11 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
-    "splash": {
-      "image": "./assets/icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#1E1B4B"
-    },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "Allow Hostella to use Face ID for fast and secure authentication."
+      }
     },
     "android": {
       "package": "com.staynexa.app",
@@ -21,7 +19,9 @@
       "permissions": [
         "POST_NOTIFICATIONS",
         "VIBRATE",
-        "RECEIVE_BOOT_COMPLETED"
+        "RECEIVE_BOOT_COMPLETED",
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT"
       ],
       "adaptiveIcon": {
         "backgroundColor": "#1E1B4B",
@@ -50,7 +50,22 @@
           "sounds": []
         }
       ],
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow Hostella to use Face ID for fast and secure authentication."
+        }
+      ],
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#1E1B4B"
+        }
+      ]
     ]
   }
 }

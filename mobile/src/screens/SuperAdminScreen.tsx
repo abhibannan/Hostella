@@ -92,37 +92,40 @@ export function SuperAdminScreen({
   const metricsEntrance = useRef(new Animated.Value(1)).current;
   const chartDrawAnim = useRef(new Animated.Value(1)).current;
 
-  // ── Executive Hostella Theme (Midnight Navy & Electric Blue) ──
+  // ── Apple iOS Human Interface Theme (Cupertino Minimalist) ──
   const theme = {
-    canvas: isDark ? "#080E1A" : "#F4F6FA",
-    card: isDark ? "#0F172A" : "#FFFFFF",
-    cardElevated: isDark ? "#1E293B" : "#F8FAFC",
-    cardBorder: isDark ? "rgba(37, 99, 235, 0.22)" : "#E2E8F0",
-    borderSubtle: isDark ? "rgba(255, 255, 255, 0.08)" : "#EDF2F7",
+    canvas: isDark ? "#000000" : "#F2F2F7",
+    card: isDark ? "#1C1C1E" : "#FFFFFF",
+    cardElevated: isDark ? "#2C2C2E" : "#F8F8FA",
+    cardBorder: isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(60, 60, 67, 0.1)",
+    borderSubtle: isDark ? "rgba(255, 255, 255, 0.06)" : "rgba(60, 60, 67, 0.06)",
+    fillTertiary: isDark ? "rgba(118, 118, 128, 0.24)" : "rgba(118, 118, 128, 0.12)",
 
-    // Executive Blue & Cyan Accents
-    primary: "#2563EB",
-    primaryGlow: isDark ? "rgba(37, 99, 235, 0.18)" : "rgba(37, 99, 235, 0.12)",
-    flame: "#3B82F6",
-    flameGlow: isDark ? "rgba(59, 130, 246, 0.2)" : "rgba(59, 130, 246, 0.12)",
-    goldLight: isDark ? "#93C5FD" : "#1D4ED8",
+    // Apple System Accent Colors
+    primary: "#007AFF", // Apple System Blue
+    primaryGlow: isDark ? "rgba(0, 122, 255, 0.2)" : "rgba(0, 122, 255, 0.12)",
+    flame: "#007AFF",
+    flameGlow: isDark ? "rgba(0, 122, 255, 0.2)" : "rgba(0, 122, 255, 0.12)",
+    goldLight: isDark ? "#5AC8FA" : "#007AFF",
 
     // Mapped aliases for consistent UI rendering
-    teal: "#2563EB",
-    tealGlow: isDark ? "rgba(37, 99, 235, 0.18)" : "rgba(37, 99, 235, 0.12)",
-    cyan: "#06B6D4",
-    cyanGlow: isDark ? "rgba(6, 182, 212, 0.2)" : "rgba(6, 182, 212, 0.12)",
-    gold: "#F59E0B",
-    goldGlow: isDark ? "rgba(245, 158, 11, 0.18)" : "rgba(245, 158, 11, 0.12)",
-    emerald: "#10B981",
-    emeraldGlow: isDark ? "rgba(16, 185, 129, 0.16)" : "rgba(16, 185, 129, 0.12)",
-    crimson: "#EF4444",
-    crimsonGlow: isDark ? "rgba(239, 68, 68, 0.18)" : "rgba(239, 68, 68, 0.1)",
+    teal: "#007AFF",
+    tealGlow: isDark ? "rgba(0, 122, 255, 0.2)" : "rgba(0, 122, 255, 0.12)",
+    cyan: "#32ADE6", // Apple System Teal / Cyan
+    cyanGlow: isDark ? "rgba(50, 173, 230, 0.2)" : "rgba(50, 173, 230, 0.12)",
+    gold: "#FF9500", // Apple System Orange / Gold
+    goldGlow: isDark ? "rgba(255, 149, 0, 0.2)" : "rgba(255, 149, 0, 0.12)",
+    emerald: "#34C759", // Apple System Green
+    emeraldGlow: isDark ? "rgba(52, 199, 89, 0.2)" : "rgba(52, 199, 89, 0.12)",
+    crimson: "#FF3B30", // Apple System Red
+    crimsonGlow: isDark ? "rgba(255, 59, 48, 0.2)" : "rgba(255, 59, 48, 0.12)",
+    indigo: "#5856D6",
+    indigoGlow: isDark ? "rgba(88, 86, 214, 0.2)" : "rgba(88, 86, 214, 0.12)",
 
-    // Typography
-    textPrimary: isDark ? "#F8FAFC" : "#0F172A",
-    textSecondary: isDark ? "#94A3B8" : "#475569",
-    textMuted: isDark ? "#64748B" : "#94A3B8",
+    // Apple Typography Labels
+    textPrimary: isDark ? "#FFFFFF" : "#000000",
+    textSecondary: isDark ? "#8E8E93" : "#6C6C70",
+    textMuted: isDark ? "#636366" : "#AEAEB2",
   };
 
   // ── States ────────────────────────────────────────────────────────────────
@@ -634,61 +637,72 @@ export function SuperAdminScreen({
             </View>
           </View>
 
-          {/* ── Search & Add Admin Bar ───────────────────────────────────── */}
+          {/* ── Search & Add Admin Bar (Apple HIG Layout) ──────────────────── */}
           <View style={styles.actionRow}>
-            <View style={[styles.searchBox, { backgroundColor: theme.cardElevated, borderColor: theme.cardBorder }]}>
-              <Ionicons name="search-outline" size={15} color={theme.textMuted} />
+            <View style={[styles.searchBox, { backgroundColor: theme.fillTertiary }]}>
+              <Ionicons name="search" size={16} color={theme.textMuted} />
               <TextInput
                 style={[styles.searchInput, { color: theme.textPrimary }]}
-                placeholder="Search staff or hostel..."
+                placeholder="Search staff, email or hostel..."
                 placeholderTextColor={theme.textMuted}
                 value={searchQuery}
                 onChangeText={setSearchQuery}
               />
               {searchQuery.length > 0 && (
                 <TouchableOpacity onPress={() => setSearchQuery("")}>
-                  <Ionicons name="close-circle" size={15} color={theme.textMuted} />
+                  <Ionicons name="close-circle" size={16} color={theme.textMuted} />
                 </TouchableOpacity>
               )}
             </View>
 
             <TouchableOpacity
-              style={[styles.addAdminBtn, { backgroundColor: theme.teal }]}
+              style={[
+                styles.addAdminBtn,
+                {
+                  backgroundColor: theme.primary,
+                  shadowColor: theme.primary,
+                },
+              ]}
               onPress={() => {
                 haptic.medium();
                 setShowAddModal(true);
               }}
-              activeOpacity={0.85}
+              activeOpacity={0.8}
             >
-              <Ionicons name="add" size={17} color="#FFFFFF" />
+              <Ionicons name="add" size={18} color="#FFFFFF" />
               <Text style={styles.addAdminBtnText}>Add Admin</Text>
             </TouchableOpacity>
           </View>
 
-          {/* ── Filter Pills Row ─────────────────────────────────────────── */}
-          <View style={styles.filterPillsRow}>
+          {/* ── Apple iOS Segmented Control ─────────────────────────────── */}
+          <View style={[styles.segmentedControlContainer, { backgroundColor: theme.fillTertiary }]}>
             {(["ALL", "ACTIVE", "INACTIVE"] as const).map((tab) => {
               const isSelected = filter === tab;
               return (
                 <TouchableOpacity
                   key={tab}
                   style={[
-                    styles.filterPill,
-                    {
-                      backgroundColor: isSelected ? theme.tealGlow : theme.cardElevated,
-                      borderColor: isSelected ? theme.teal : theme.cardBorder,
-                    },
+                    styles.segmentedTab,
+                    isSelected && [
+                      styles.segmentedTabActive,
+                      {
+                        backgroundColor: theme.card,
+                        shadowColor: "#000",
+                        shadowOpacity: isDark ? 0.35 : 0.08,
+                      },
+                    ],
                   ]}
                   onPress={() => {
                     haptic.selection();
                     setFilter(tab);
                   }}
+                  activeOpacity={0.8}
                 >
                   <Text
                     style={[
-                      styles.filterPillText,
+                      styles.segmentedTabText,
                       {
-                        color: isSelected ? theme.teal : theme.textSecondary,
+                        color: isSelected ? theme.textPrimary : theme.textSecondary,
                         fontWeight: isSelected ? "700" : "500",
                       },
                     ]}
@@ -1233,15 +1247,14 @@ const styles = StyleSheet.create({
     gap: 7,
   },
   headerBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    borderWidth: 1,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
   },
 
-  // Metrics Strip
+  // Metrics Strip (Apple Inset Cards)
   metricsStrip: {
     flexDirection: "row",
     gap: 8,
@@ -1249,24 +1262,32 @@ const styles = StyleSheet.create({
   },
   metricCard: {
     flex: 1,
-    borderRadius: 10,
-    borderWidth: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingVertical: 10,
+    paddingHorizontal: 11,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
   },
   metricLabel: {
-    fontSize: 8.5,
+    fontSize: 9.5,
     fontWeight: "700",
-    letterSpacing: 0.4,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
   },
   metricValue: {
-    fontSize: 16,
+    fontSize: 19,
     fontWeight: "800",
-    marginTop: 2,
+    letterSpacing: -0.5,
+    marginTop: 3,
   },
   metricSubtext: {
-    fontSize: 9.5,
-    marginTop: 1,
+    fontSize: 10,
+    marginTop: 2,
+    fontWeight: "500",
   },
   activeDot: {
     width: 6,
@@ -1277,31 +1298,31 @@ const styles = StyleSheet.create({
   // Chart Bar
   chartBarWrapper: {
     marginTop: 10,
-    borderRadius: 8,
-    padding: 8,
+    borderRadius: 12,
+    padding: 10,
   },
   chartBarLabelRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 5,
+    marginBottom: 6,
   },
   chartBarLabel: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: "600",
   },
   chartBarPercent: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: "700",
   },
   chartBarTrack: {
-    height: 5,
-    borderRadius: 2.5,
+    height: 6,
+    borderRadius: 3,
     overflow: "hidden",
   },
   chartBarFill: {
     height: "100%",
-    borderRadius: 2.5,
+    borderRadius: 3,
   },
 
   // Action Row
@@ -1315,33 +1336,59 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    gap: 7,
-    borderRadius: 8,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    height: 38,
+    gap: 8,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    height: 40,
   },
   searchInput: {
     flex: 1,
-    fontSize: 12,
-    height: 38,
+    fontSize: 13,
+    height: 40,
   },
   addAdminBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 12,
-    height: 38,
-    borderRadius: 8,
+    gap: 5,
+    paddingHorizontal: 15,
+    height: 40,
+    borderRadius: 20,
     justifyContent: "center",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 5,
+    elevation: 3,
   },
   addAdminBtnText: {
-    fontSize: 12,
-    fontWeight: "800",
+    fontSize: 13,
+    fontWeight: "700",
     color: "#FFFFFF",
   },
 
-  // Filter Pills Row
+  // Apple Segmented Control Container
+  segmentedControlContainer: {
+    flexDirection: "row",
+    borderRadius: 10,
+    padding: 3,
+    marginTop: 12,
+  },
+  segmentedTab: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 7,
+    borderRadius: 8,
+  },
+  segmentedTabActive: {
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  segmentedTabText: {
+    fontSize: 11.5,
+  },
+
+  // Filter Pills Row (legacy fallback)
   filterPillsRow: {
     flexDirection: "row",
     gap: 7,
@@ -1350,7 +1397,7 @@ const styles = StyleSheet.create({
   filterPill: {
     paddingHorizontal: 11,
     paddingVertical: 5,
-    borderRadius: 6,
+    borderRadius: 8,
     borderWidth: 1,
   },
   filterPillText: {
@@ -1367,22 +1414,22 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   loadingText: {
-    fontSize: 12,
+    fontSize: 13,
     marginTop: 10,
   },
   emptyBox: {
-    borderRadius: 14,
+    borderRadius: 18,
     borderWidth: 1,
     padding: 28,
     alignItems: "center",
   },
   emptyTitle: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: "700",
     marginTop: 10,
   },
   emptySubtitle: {
-    fontSize: 12,
+    fontSize: 13,
     textAlign: "center",
     marginTop: 4,
     lineHeight: 18,
@@ -1391,22 +1438,27 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
     marginTop: 16,
   },
   emptyAddBtnText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "700",
     color: "#FFFFFF",
   },
 
-  // Admin Card
+  // Admin Card (Apple Inset Grouped Card)
   adminCard: {
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 14,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   adminCardHeader: {
     flexDirection: "row",
@@ -1419,50 +1471,51 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   avatarCircle: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    borderWidth: 1,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: StyleSheet.hairlineWidth,
     alignItems: "center",
     justifyContent: "center",
   },
   avatarInitial: {
-    fontSize: 15,
+    fontSize: 17,
     fontWeight: "800",
   },
   adminDetailsText: {
-    marginLeft: 10,
+    marginLeft: 12,
     flex: 1,
   },
   adminFullName: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "700",
+    letterSpacing: -0.2,
   },
   selfTag: {
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 5,
     borderWidth: 1,
   },
   selfTagText: {
-    fontSize: 9,
+    fontSize: 9.5,
     fontWeight: "800",
   },
   rolePill: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 2.5,
+    borderRadius: 6,
   },
   rolePillText: {
-    fontSize: 9.5,
+    fontSize: 10,
     fontWeight: "600",
   },
   adminEmailText: {
-    fontSize: 11.5,
+    fontSize: 12,
     marginTop: 2,
   },
   adminPhoneText: {
-    fontSize: 11,
+    fontSize: 11.5,
     marginTop: 1,
   },
   switchWrapper: {

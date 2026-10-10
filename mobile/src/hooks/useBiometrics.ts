@@ -1,9 +1,10 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { AppState, AppStateStatus, Platform } from "react-native";
+import { Alert, AppState, AppStateStatus, Platform } from "react-native";
 import * as LocalAuthentication from "expo-local-authentication";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const BIOMETRICS_PREF_KEY = "@hosteldesk_biometrics_enabled";
+const BIOMETRICS_PREF_KEY = "@hostella_biometrics_enabled";
+const LEGACY_BIOMETRICS_PREF_KEY = "@hosteldesk_biometrics_enabled";
 
 export let shouldSuspendBiometrics = false;
 export const setSuspendBiometrics = (val: boolean) => {
@@ -39,12 +40,14 @@ export function useBiometrics(hasSession: boolean): BiometricsState {
 
     async function checkSupport() {
       try {
-        const [hasHardware, enrolled, types, savedPref] = await Promise.all([
-          LocalAuthentication.hasHardwareAsync(),
-          LocalAuthentication.isEnrolledAsync(),
-          LocalAuthentication.supportedAuthenticationTypesAsync(),
-          AsyncStorage.getItem(BIOMETRICS_PREF_KEY),
-        ]);
+        const hasHardware = await LocalAuthentication.hasHardwareAsync().catch(() => false);
+        const enrolled = hasHardware ? await LocalAuthentication.isEnrolledAsync().catch(() => false) : false;
+        const types = hasHardware ? await LocalAuthentication.supportedAuthenticationTypesAsync().catch(() => []) : [];
+        
+        let savedPref = await AsyncStorage.getItem(BIOMETRICS_PREF_KEY).catch(() => null);
+        if (savedPref === null) {
+          savedPref = await AsyncStorage.getItem(LEGACY_BIOMETRICS_PREF_KEY).catch(() => null);
+        }
 
         if (!isMounted) return;
 
@@ -64,12 +67,20 @@ export function useBiometrics(hasSession: boolean): BiometricsState {
         const enabled = savedPref === "true" && hasHardware && enrolled;
         setIsBiometricsEnabled(enabled);
 
-        // Lock if enabled and user is logged in
-        if (enabled && hasSession) {
+        // Lock if enabled, supported, and user is logged in
+        if (enabled && hasSession && hasHardware && enrolled) {
           setIsLocked(true);
+        } else {
+          setIsLocked(false);
         }
       } catch (err) {
         console.warn("Biometrics detection error:", err);
+        if (isMounted) {
+          setIsHardwareAvailable(false);
+          setIsEnrolled(false);
+          setIsBiometricsEnabled(false);
+          setIsLocked(false);
+        }
       }
     }
 
@@ -84,6 +95,16 @@ export function useBiometrics(hasSession: boolean): BiometricsState {
   const promptUnlock = useCallback(async (): Promise<boolean> => {
     try {
       setAuthError(null);
+
+      const hasHardware = await LocalAuthentication.hasHardwareAsync().catch(() => false);
+      const isEnrolled = await LocalAuthentication.isEnrolledAsync().catch(() => false);
+      if (!hasHardware || !isEnrolled) {
+        setIsLocked(false);
+        setIsBiometricsEnabled(false);
+        await AsyncStorage.setItem(BIOMETRICS_PREF_KEY, "false").catch(() => {});
+        return true;
+      }
+
       const result = await LocalAuthentication.authenticateAsync({
         promptMessage: "Unlock Hostella",
         cancelLabel: "Cancel",
@@ -96,13 +117,15 @@ export function useBiometrics(hasSession: boolean): BiometricsState {
         setAuthError(null);
         return true;
       } else {
-        if (result.error && result.error !== "user_cancel" && result.error !== "app_cancel") {
-          setAuthError("Authentication failed. Please try again.");
+        const errorType = "error" in result ? (result as { error?: string }).error : null;
+        if (errorType && errorType !== "user_cancel" && errorType !== "app_cancel") {
+          setAuthError("Authentication failed. Tap below to retry or use device passcode.");
         }
         return false;
       }
-    } catch (err) {
-      setAuthError(err instanceof Error ? err.message : "Authentication error");
+    } catch (err: any) {
+      console.warn("Biometric authentication error:", err);
+      setAuthError(err?.message || "Biometric error. Tap to retry or unlock manually.");
       return false;
     }
   }, []);
@@ -113,7 +136,7 @@ export function useBiometrics(hasSession: boolean): BiometricsState {
       initialPromptDone.current = true;
       const timer = setTimeout(() => {
         void promptUnlock();
-      }, 350);
+      }, 400);
       return () => clearTimeout(timer);
     }
   }, [isBiometricsEnabled, hasSession, isLocked, promptUnlock]);
@@ -142,34 +165,43 @@ export function useBiometrics(hasSession: boolean): BiometricsState {
     };
   }, [isBiometricsEnabled, hasSession, promptUnlock]);
 
-  // 5. Toggle biometrics setting (requires immediate authentication verification before turning on)
+  // 5. Toggle biometrics setting
   const toggleBiometrics = useCallback(
     async (enable: boolean): Promise<boolean> => {
-      if (!isHardwareAvailable || !isEnrolled) {
-        throw new Error("Biometric authentication is not supported or enrolled on this device.");
-      }
+      try {
+        if (enable) {
+          if (!isHardwareAvailable || !isEnrolled) {
+            Alert.alert(
+              "Biometrics Unavailable",
+              "Biometric authentication (Fingerprint or Face ID) is not set up on this device. Please enroll biometrics in your phone settings first."
+            );
+            return false;
+          }
 
-      if (enable) {
-        // Verify biometric once before saving preference
-        const testAuth = await LocalAuthentication.authenticateAsync({
-          promptMessage: `Verify your ${biometricTypeLabel} to enable biometric unlock`,
-          cancelLabel: "Cancel",
-          fallbackLabel: "Cancel",
-        });
+          const testAuth = await LocalAuthentication.authenticateAsync({
+            promptMessage: `Verify your ${biometricTypeLabel} to enable biometric unlock`,
+            cancelLabel: "Cancel",
+            disableDeviceFallback: false,
+          });
 
-        if (!testAuth.success) {
-          return false;
+          if (!testAuth.success) {
+            return false;
+          }
+
+          await AsyncStorage.setItem(BIOMETRICS_PREF_KEY, "true");
+          setIsBiometricsEnabled(true);
+          setIsLocked(false);
+          return true;
+        } else {
+          await AsyncStorage.setItem(BIOMETRICS_PREF_KEY, "false");
+          setIsBiometricsEnabled(false);
+          setIsLocked(false);
+          return true;
         }
-
-        await AsyncStorage.setItem(BIOMETRICS_PREF_KEY, "true");
-        setIsBiometricsEnabled(true);
-        setIsLocked(false);
-        return true;
-      } else {
-        await AsyncStorage.setItem(BIOMETRICS_PREF_KEY, "false");
-        setIsBiometricsEnabled(false);
-        setIsLocked(false);
-        return true;
+      } catch (err: any) {
+        console.warn("Toggle biometrics error:", err);
+        Alert.alert("Biometrics Notice", err?.message || "Could not toggle biometric authentication.");
+        return false;
       }
     },
     [isHardwareAvailable, isEnrolled, biometricTypeLabel]
@@ -177,6 +209,7 @@ export function useBiometrics(hasSession: boolean): BiometricsState {
 
   const unlockManually = useCallback(() => {
     setIsLocked(false);
+    setAuthError(null);
   }, []);
 
   return {
