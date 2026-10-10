@@ -57,7 +57,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
             <Text style={styles.title}>Something went wrong</Text>
             <Text style={styles.subtitle}>
-              StayNexa ran into an unexpected issue. Don't worry, your data is safe and synchronized.
+              Hostella ran into an unexpected issue. Don't worry, your data is safe and synchronized.
             </Text>
 
             <View style={styles.actionsRow}>

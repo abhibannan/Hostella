@@ -41,7 +41,7 @@ export function BiometricLockOverlay({
         </View>
 
         {/* Title & Description */}
-        <Text style={[styles.title, { color: colors.text }]}>StayNexa Locked</Text>
+        <Text style={[styles.title, { color: colors.text }]}>Hostella Locked</Text>
         <Text style={[styles.subtitle, { color: colors.secondary }]}>
           Authenticate using your {biometricLabel} to access your hostel management dashboard.
         </Text>

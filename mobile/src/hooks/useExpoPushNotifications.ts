@@ -47,8 +47,8 @@ export function useExpoPushNotifications(
               enableVibrate: true,
               showBadge: true,
             });
-            await Notifications.setNotificationChannelAsync("staynexa", {
-              name: "StayNexa Alerts",
+            await Notifications.setNotificationChannelAsync("hostella", {
+              name: "Hostella Alerts",
               importance: Notifications.AndroidImportance.MAX,
               vibrationPattern: [0, 250, 250, 250],
               lightColor: "#2563EB",

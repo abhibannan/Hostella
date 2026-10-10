@@ -234,12 +234,12 @@ export async function generateAndShareFinancialPdf({
           .join("");
 
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/>
-    <title>StayNexa Financial Statement</title>
+    <title>Hostella Financial Statement</title>
     <style>${CSS_BASE}</style></head><body>
 
     <div class="page-header">
       <div>
-        <div class="brand">StayNexa</div>
+        <div class="brand">Hostella</div>
         <div class="hostel-name">${hostelName}</div>
         <div class="brand-sub">${periodLabel}</div>
       </div>
@@ -296,12 +296,12 @@ export async function generateAndShareFinancialPdf({
         <div class="sig-line" style="margin-left:auto;"></div>
       </div>
     </div>
-    <div class="watermark">StayNexa Hostel Management Platform • Confidential Financial Report</div>
+    <div class="watermark">Hostella Hostel Management Platform • Confidential Financial Report</div>
   </body></html>`;
 
   await printAndShare(
     html,
-    `StayNexa_Financial_${month || "AllTime"}.pdf`,
+    `Hostella_Financial_${month || "AllTime"}.pdf`,
     `Download ${hostelName} Financial Report`
   );
 }
@@ -421,12 +421,12 @@ export async function generatePaymentHistoryPdf({
           .join("");
 
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/>
-    <title>StayNexa Payment History</title>
+    <title>Hostella Payment History</title>
     <style>${CSS_BASE}</style></head><body>
 
     <div class="page-header">
       <div>
-        <div class="brand">StayNexa</div>
+        <div class="brand">Hostella</div>
         <div class="hostel-name">${hostelName}</div>
         <div class="brand-sub">${periodLabel}</div>
         ${hostel?.address ? `<div style="font-size:11px;color:#64748B;margin-top:2px;">${hostel.address}${hostel.city ? `, ${hostel.city}` : ""}</div>` : ""}
@@ -500,12 +500,12 @@ export async function generatePaymentHistoryPdf({
         <div class="sig-line" style="margin-left:auto;"></div>
       </div>
     </div>
-    <div class="watermark">StayNexa Hostel Management Platform • Payment History Report • Confidential</div>
+    <div class="watermark">Hostella Hostel Management Platform • Payment History Report • Confidential</div>
   </body></html>`;
 
   await printAndShare(
     html,
-    `StayNexa_Payments_${month || "AllTime"}.pdf`,
+    `Hostella_Payments_${month || "AllTime"}.pdf`,
     `Download ${hostelName} Payment History`
   );
 }
@@ -585,12 +585,12 @@ export async function generateRenterStatementPdf({
           .join("");
 
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/>
-    <title>StayNexa Resident Statement</title>
+    <title>Hostella Resident Statement</title>
     <style>${CSS_BASE}</style></head><body>
 
     <div class="page-header">
       <div>
-        <div class="brand">StayNexa</div>
+        <div class="brand">Hostella</div>
         <div class="hostel-name">${hostelName}</div>
         <div class="brand-sub">Individual Resident Statement</div>
       </div>
@@ -661,12 +661,12 @@ export async function generateRenterStatementPdf({
         <div class="sig-line" style="margin-left:auto;"></div>
       </div>
     </div>
-    <div class="watermark">StayNexa Hostel Management Platform • Resident Statement • Confidential</div>
+    <div class="watermark">Hostella Hostel Management Platform • Resident Statement • Confidential</div>
   </body></html>`;
 
   await printAndShare(
     html,
-    `StayNexa_Statement_${renterName.replace(/\s+/g, "_")}.pdf`,
+    `Hostella_Statement_${renterName.replace(/\s+/g, "_")}.pdf`,
     `Download Statement — ${renterName}`
   );
 }
@@ -773,12 +773,12 @@ export async function generateMonthlySummaryPdf({
     .join("");
 
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/>
-    <title>StayNexa Monthly Summary</title>
+    <title>Hostella Monthly Summary</title>
     <style>${CSS_BASE}</style></head><body>
 
     <div class="page-header">
       <div>
-        <div class="brand">StayNexa</div>
+        <div class="brand">Hostella</div>
         <div class="hostel-name">${hostelName}</div>
         <div class="brand-sub">Monthly Management Summary Report — ${month}</div>
         ${hostel?.address ? `<div style="font-size:11px;color:#64748B;margin-top:2px;">${hostel.address}${hostel.city ? `, ${hostel.city}` : ""}${hostel.state ? ` — ${hostel.state}` : ""}</div>` : ""}
@@ -876,12 +876,12 @@ export async function generateMonthlySummaryPdf({
         <div class="sig-line" style="margin-left:auto;"></div>
       </div>
     </div>
-    <div class="watermark">StayNexa Hostel Management Platform • Monthly Management Report • ${month} • Confidential</div>
+    <div class="watermark">Hostella Hostel Management Platform • Monthly Management Report • ${month} • Confidential</div>
   </body></html>`;
 
   await printAndShare(
     html,
-    `StayNexa_Monthly_${month}.pdf`,
+    `Hostella_Monthly_${month}.pdf`,
     `Download ${hostelName} — ${month} Report`
   );
 }

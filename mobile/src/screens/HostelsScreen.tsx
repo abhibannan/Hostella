@@ -13,9 +13,11 @@ import {
   Alert,
   StyleSheet,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { Hostel } from "../types";
 import { Header, EmptyState } from "../components/common";
+import { HostellaBrand } from "../components/HostellaBrand";
 import { COLORS } from "../constants/theme";
 import { useTheme } from "../contexts/ThemeContext";
 import { haptic } from "../utils/haptics";
@@ -26,6 +28,7 @@ interface HostelsScreenProps {
   onSelectHostel: (hostelId: string) => void;
   onRefresh: () => void;
   request?: <T>(path: string, options?: RequestInit) => Promise<T>;
+  onBack?: () => void;
 }
 
 const PROPERTY_TYPES = ["Boys Hostel", "Girls Hostel", "Co-Living", "PG", "Apartment"];
@@ -36,6 +39,7 @@ export function HostelsScreen({
   onSelectHostel,
   onRefresh,
   request,
+  onBack,
 }: HostelsScreenProps) {
   const { colors, isDark } = useTheme();
 
@@ -98,7 +102,7 @@ export function HostelsScreen({
 
       Alert.alert(
         "Property Added",
-        `"${createdName}" has been successfully added to your StayNexa portfolio.`
+        `"${createdName}" has been successfully added to your Hostella portfolio.`
       );
     } catch (err: any) {
       const msg = err?.message || (typeof err === "string" ? err : "Please check your network and try again.");
@@ -154,97 +158,157 @@ export function HostelsScreen({
         />
       }
     >
-      {/* Header with Add Button */}
-      <View style={styles.topHeaderRow}>
-        <View style={{ flex: 1 }}>
-          <Header
-            title="Hostels"
-            subtitle="Manage your properties, switch locations, or add a hostel."
-            onRefresh={onRefresh}
-          />
-        </View>
-        <TouchableOpacity
-          style={[styles.addPropertyBtn, { backgroundColor: colors.primary }]}
-          onPress={() => setShowAddModal(true)}
-          activeOpacity={0.8}
+      {/* ── Deep Royal Navy Hero Banner (Matching Dashboard Theme) ── */}
+      <View style={styles.heroContainer}>
+        <LinearGradient
+          colors={isDark ? ["#060B1E", "#0B163B", "#132357"] : ["#0A1333", "#122566", "#1E3A8A"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0.35, y: 1 }}
+          style={styles.heroBannerGradient}
         >
-          <Ionicons name="add" size={18} color="#FFFFFF" />
-          <Text style={styles.addPropertyBtnText}>Add Hostel</Text>
-        </TouchableOpacity>
-      </View>
+          {/* Ambient Lighting Orbs */}
+          <View style={[styles.ambientOrb, { top: -30, right: -20, width: 160, height: 160, backgroundColor: "rgba(59, 130, 246, 0.22)" }]} />
+          <View style={[styles.ambientOrb, { top: 20, left: -40, width: 130, height: 130, backgroundColor: "rgba(139, 92, 246, 0.2)" }]} />
 
-      {/* ── Section 1: Active Managing Hostel ───────────────────────────── */}
-      {currentHostel ? (
-        <View style={styles.sectionWrap}>
-          <Text style={[styles.sectionDividerLabel, { color: colors.secondary }]}>
-            CURRENTLY ACTIVE PROPERTY
-          </Text>
-          <View
-            style={[
-              styles.heroActiveCard,
-              {
-                backgroundColor: colors.card,
-                borderColor: colors.primary,
-                borderWidth: 1.5,
-              },
-            ]}
-          >
-            <View style={styles.heroActiveTop}>
-              <View
-                style={[
-                  styles.heroActiveIconBox,
-                  { backgroundColor: isDark ? "rgba(59,130,246,0.18)" : colors.primaryLight },
-                ]}
-              >
-                <Ionicons name="business" size={24} color={colors.primary} />
-              </View>
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                  <Text style={[styles.heroActiveName, { color: colors.text }]} numberOfLines={1}>
-                    {currentHostel.name}
+          {/* Header Top Bar: Hostella Brand + Back Btn + Title + Property Badge + Add CTA */}
+          <View style={{ marginBottom: 8 }}>
+            <HostellaBrand variant="full" colorScheme="dark" size="small" style={{ alignSelf: "flex-start" }} />
+          </View>
+          <View style={styles.heroHeaderRow}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
+              {onBack ? (
+                <TouchableOpacity
+                  style={styles.heroBackBtn}
+                  onPress={onBack}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="arrow-back" size={20} color="#FFFFFF" />
+                </TouchableOpacity>
+              ) : null}
+              <View style={{ flex: 1 }}>
+                <Text style={styles.heroTitle}>Properties</Text>
+                <View style={styles.heroPropertyBadge}>
+                  <View style={styles.activeDot} />
+                  <Text style={styles.heroPropertyText} numberOfLines={1}>
+                    {currentHostel?.name ? `Managing: ${currentHostel.name}` : "Hostella"}
                   </Text>
-                </View>
-                <View style={styles.activeBadgeRow}>
-                  <View style={[styles.activeLiveBadge, { backgroundColor: colors.successLight }]}>
-                    <View style={[styles.liveDot, { backgroundColor: colors.success }]} />
-                    <Text style={[styles.activeLiveBadgeText, { color: colors.success }]}>
-                      Managing Now
-                    </Text>
-                  </View>
-                  {currentHostel.type ? (
-                    <View style={[styles.typePill, { backgroundColor: colors.surfaceSecondary }]}>
-                      <Text style={[styles.typePillText, { color: colors.secondary }]}>
-                        {currentHostel.type}
-                      </Text>
-                    </View>
-                  ) : null}
                 </View>
               </View>
             </View>
 
-            <View style={[styles.heroDetailsBox, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
-              {currentHostel.address ? (
-                <View style={styles.detailLine}>
-                  <Ionicons name="location-outline" size={14} color={colors.secondary} />
-                  <Text style={[styles.detailLineText, { color: colors.secondary }]} numberOfLines={1}>
-                    {currentHostel.address}
-                    {currentHostel.city ? `, ${currentHostel.city}` : ""}
-                    {currentHostel.state ? `, ${currentHostel.state}` : ""}
-                  </Text>
-                </View>
-              ) : null}
-              {currentHostel.contactPhone ? (
-                <View style={styles.detailLine}>
-                  <Ionicons name="call-outline" size={14} color={colors.secondary} />
-                  <Text style={[styles.detailLineText, { color: colors.secondary }]}>
-                    {currentHostel.contactPhone}
-                  </Text>
-                </View>
-              ) : null}
+            <TouchableOpacity
+              style={styles.heroAddBtn}
+              onPress={() => {
+                haptic.medium();
+                setShowAddModal(true);
+              }}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="add" size={17} color="#FFFFFF" />
+              <Text style={styles.heroAddBtnText}>Add Property</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Stats Chips inside Hero */}
+          <View style={styles.heroStatsRow}>
+            <View style={[styles.heroStatChip, { backgroundColor: "rgba(255,255,255,0.14)" }]}>
+              <Ionicons name="business" size={13} color="#FFFFFF" />
+              <Text style={[styles.heroStatChipText, { color: "#FFFFFF" }]}>
+                {hostels.length} {hostels.length === 1 ? "Property" : "Properties"}
+              </Text>
+            </View>
+
+            {currentHostel?.type ? (
+              <View style={[styles.heroStatChip, { backgroundColor: "rgba(59, 130, 246, 0.25)" }]}>
+                <Ionicons name="pricetag" size={13} color="#93C5FD" />
+                <Text style={[styles.heroStatChipText, { color: "#93C5FD" }]}>
+                  {currentHostel.type}
+                </Text>
+              </View>
+            ) : null}
+
+            <View style={[styles.heroStatChip, { backgroundColor: "rgba(16, 185, 129, 0.22)" }]}>
+              <Ionicons name="checkmark-circle" size={13} color="#34D399" />
+              <Text style={[styles.heroStatChipText, { color: "#34D399" }]}>
+                Active & Synced
+              </Text>
             </View>
           </View>
-        </View>
-      ) : null}
+        </LinearGradient>
+
+        {/* Floating Active Property Card (Overlaps the bottom half of the hero) */}
+        {currentHostel && (
+          <View style={styles.floatingActiveWrap}>
+            <View
+              style={[
+                styles.heroActiveCard,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: isDark ? "rgba(59, 130, 246, 0.4)" : colors.border,
+                  borderWidth: 1.5,
+                },
+              ]}
+            >
+              <View style={styles.heroActiveTop}>
+                <View
+                  style={[
+                    styles.heroActiveIconBox,
+                    { backgroundColor: isDark ? "rgba(59,130,246,0.18)" : colors.primaryLight },
+                  ]}
+                >
+                  <Ionicons name="business" size={24} color={colors.primary} />
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <Text style={[styles.heroActiveName, { color: colors.text }]} numberOfLines={1}>
+                      {currentHostel.name}
+                    </Text>
+                  </View>
+                  <View style={styles.activeBadgeRow}>
+                    <View style={[styles.activeLiveBadge, { backgroundColor: colors.successLight }]}>
+                      <View style={[styles.liveDot, { backgroundColor: colors.success }]} />
+                      <Text style={[styles.activeLiveBadgeText, { color: colors.success }]}>
+                        Managing Now
+                      </Text>
+                    </View>
+                    {currentHostel.type ? (
+                      <View style={[styles.typePill, { backgroundColor: colors.surfaceSecondary }]}>
+                        <Text style={[styles.typePillText, { color: colors.secondary }]}>
+                          {currentHostel.type}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                </View>
+              </View>
+
+              <View style={[styles.heroDetailsBox, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+                {currentHostel.address ? (
+                  <View style={styles.detailLine}>
+                    <Ionicons name="location-outline" size={14} color={colors.secondary} />
+                    <Text style={[styles.detailLineText, { color: colors.secondary }]} numberOfLines={1}>
+                      {currentHostel.address}
+                      {currentHostel.city ? `, ${currentHostel.city}` : ""}
+                      {currentHostel.state ? `, ${currentHostel.state}` : ""}
+                    </Text>
+                  </View>
+                ) : null}
+                {currentHostel.contactPhone ? (
+                  <View style={styles.detailLine}>
+                    <Ionicons name="call-outline" size={14} color={colors.secondary} />
+                    <Text style={[styles.detailLineText, { color: colors.secondary }]}>
+                      {currentHostel.contactPhone}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            </View>
+          </View>
+        )}
+      </View>
+
+      {/* ── Main Properties Body ── */}
+      <View style={styles.mainHostelsBody}>
 
       {/* ── Search Bar ────────────────────────────────────────────────── */}
       <View style={[styles.searchBar, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -369,6 +433,7 @@ export function HostelsScreen({
           })
         )}
       </View>
+      </View>
 
       {/* ── Add Hostel Modal ────────────────────────────────────────────── */}
       <Modal visible={showAddModal} transparent animationType="slide">
@@ -403,7 +468,7 @@ export function HostelsScreen({
               </View>
 
               <Text style={[styles.modalSub, { color: colors.secondary }]}>
-                Register a hostel or apartment building to manage with StayNexa.
+                Register a hostel or apartment building to manage with Hostella.
               </Text>
 
               {/* Name */}
@@ -571,12 +636,124 @@ export function HostelsScreen({
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  screenContent: { padding: 18, paddingBottom: 110 },
+  screenContent: { paddingBottom: 110 },
+  heroContainer: {
+    width: "100%",
+    marginBottom: 4,
+  },
+  heroBannerGradient: {
+    paddingHorizontal: 16,
+    paddingTop: Platform.OS === "ios" ? 18 : 14,
+    paddingBottom: 68,
+    minHeight: 180,
+    position: "relative",
+    overflow: "hidden",
+  },
+  floatingActiveWrap: {
+    paddingHorizontal: 16,
+    marginTop: -52,
+    zIndex: 10,
+    marginBottom: 8,
+  },
+  ambientOrb: {
+    position: "absolute",
+    borderRadius: 999,
+  },
+  heroHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 16,
+    zIndex: 2,
+  },
+  heroBackBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  heroTitle: {
+    fontSize: 24,
+    fontWeight: "900",
+    color: "#FFFFFF",
+    letterSpacing: -0.5,
+  },
+  heroPropertyBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 3,
+  },
+  activeDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: "#10B981",
+  },
+  heroPropertyText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "rgba(255, 255, 255, 0.75)",
+  },
+  heroAddBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "#2563EB",
+    paddingHorizontal: 13,
+    paddingVertical: 9,
+    borderRadius: 13,
+    shadowColor: "#000",
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+    elevation: 3,
+  },
+  heroAddBtnText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#FFFFFF",
+  },
+  heroStatsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+    zIndex: 2,
+  },
+  heroStatChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  heroStatChipText: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  mainHostelsBody: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+  },
   topHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     marginBottom: 10,
+    gap: 10,
+  },
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
   addPropertyBtn: {
     flexDirection: "row",

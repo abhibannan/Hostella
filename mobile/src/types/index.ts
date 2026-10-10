@@ -1,4 +1,4 @@
-export type Tab = "dashboard" | "hostels" | "rooms" | "renters" | "fees" | "payments" | "repairs" | "notifications" | "more";
+export type Tab = "dashboard" | "hostels" | "rooms" | "renters" | "fees" | "payments" | "repairs" | "more" | "notifications";
 
 export type Hostel = {
   id: string;
@@ -39,6 +39,8 @@ export type Renter = {
   joiningDate?: string;
   monthlyFee?: number;
   securityDeposit?: number;
+  bed?: string | number | null;
+  dueDateDay?: number | null;
   user?: {
     id?: string;
     firstName?: string;
@@ -147,7 +149,7 @@ export type RepairPerson = {
   createdAt: string;
 };
 
-export type RenterTab = "details" | "fees" | "repairs" | "notifications";
+export type RenterTab = "details" | "fees" | "repairs";
 
 export type Notification = {
   id: string;

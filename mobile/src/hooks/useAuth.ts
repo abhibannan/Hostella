@@ -20,6 +20,7 @@ import { Hostel, Renter, User } from "../types";
 import { listFrom, dashboardFrom } from "../utils/formatters";
 
 const SESSION_CACHE_KEY = "@staynexa_auth_session_v1";
+const LEGACY_SESSION_CACHE_KEY = "@hosteldesk_auth_session_v1";
 
 interface CachedSession {
   token: string;
@@ -180,22 +181,36 @@ export function useAuth(callbacks?: AuthCallbacks): AuthActions {
         Authorization: `Bearer ${idToken}`,
       };
 
-      // 1. Fetch /auth/me with retry if cold start or transient network glitch
+      // 1. Fetch /auth/me and /hostels simultaneously in parallel
+      const mePromise = (async () => {
+        try {
+          const res = await fetch(`${API_URL}/auth/me`, { headers });
+          const data = await jsonResponse(res);
+          return { res, data };
+        } catch {
+          // Fast retry on cold start or network burp
+          await new Promise((r) => setTimeout(r, 800));
+          const res = await fetch(`${API_URL}/auth/me`, { headers });
+          const data = await jsonResponse(res);
+          return { res, data };
+        }
+      })();
+
+      const hostelsPromise = fetch(`${API_URL}/hostels`, { headers })
+        .then(async (r) => (r.ok ? listFrom<Hostel>(await jsonResponse(r), "hostels") : ([] as Hostel[])))
+        .catch(() => [] as Hostel[]);
+
       let meResponse: Response | null = null;
       let meData: any = null;
+      let hostelData: Hostel[] = [];
 
       try {
-        meResponse = await fetch(`${API_URL}/auth/me`, { headers });
-        meData = await jsonResponse(meResponse);
-      } catch (firstErr) {
-        // Cold start retry after 1.2s delay
-        try {
-          await new Promise((r) => setTimeout(r, 1200));
-          meResponse = await fetch(`${API_URL}/auth/me`, { headers });
-          meData = await jsonResponse(meResponse);
-        } catch (secondErr) {
-          throw new Error("Unable to reach StayNexa servers. Please check your internet connection.");
-        }
+        const [meResult, fetchedHostels] = await Promise.all([mePromise, hostelsPromise]);
+        meResponse = meResult.res;
+        meData = meResult.data;
+        hostelData = fetchedHostels;
+      } catch {
+        throw new Error("Unable to reach Hostella servers. Please check your internet connection.");
       }
 
       if (!meResponse || !meResponse.ok) {
@@ -220,18 +235,6 @@ export function useAuth(callbacks?: AuthCallbacks): AuthActions {
           await signOut(auth).catch(() => {});
           throw new Error("Invalid login portal. Please switch to the 'Resident' tab to log in as a resident.");
         }
-      }
-
-      // 2. Fetch /hostels safely (defaults to [] if empty or request fails)
-      let hostelData: Hostel[] = [];
-      try {
-        const hostelsResponse = await fetch(`${API_URL}/hostels`, { headers });
-        if (hostelsResponse.ok) {
-          const hostelsData = await jsonResponse(hostelsResponse);
-          hostelData = listFrom<Hostel>(hostelsData, "hostels");
-        }
-      } catch {
-        hostelData = [];
       }
 
       // Automatically sync UI login tab to the user's actual database role
@@ -310,7 +313,10 @@ export function useAuth(callbacks?: AuthCallbacks): AuthActions {
 
     async function restoreCachedSession() {
       try {
-        const raw = await AsyncStorage.getItem(SESSION_CACHE_KEY);
+        let raw = await AsyncStorage.getItem(SESSION_CACHE_KEY);
+        if (!raw) {
+          raw = await AsyncStorage.getItem(LEGACY_SESSION_CACHE_KEY);
+        }
         if (raw && isMounted) {
           const cached: CachedSession = JSON.parse(raw);
           if (cached?.token && cached?.user) {
@@ -388,9 +394,6 @@ export function useAuth(callbacks?: AuthCallbacks): AuthActions {
         try {
           // Fast local token retrieval
           const idToken = await firebaseUser.getIdToken(false);
-          if (mounted) {
-            setToken(idToken);
-          }
 
           // Background revalidation on first event or token change
           if (!authInitialized.current) {
@@ -405,6 +408,7 @@ export function useAuth(callbacks?: AuthCallbacks): AuthActions {
                 const meData = (await jsonResponse(meResponse)) as any;
                 const user = (meData.user || meData) as User;
                 if (user && mounted) {
+                  setToken(idToken);
                   setCurrentUser(user);
 
                   const hostelsRes = await fetch(`${API_URL}/hostels`, {
@@ -453,11 +457,19 @@ export function useAuth(callbacks?: AuthCallbacks): AuthActions {
                   headers: { Authorization: `Bearer ${freshToken}` },
                 });
                 if (retryRes.ok) {
-                  if (mounted) setToken(freshToken);
+                  const retryData = (await jsonResponse(retryRes)) as any;
+                  const retryUser = (retryData.user || retryData) as User;
+                  if (retryUser && mounted) {
+                    setToken(freshToken);
+                    setCurrentUser(retryUser);
+                  }
                 } else if (retryRes.status === 401) {
                   // Explicitly revoked
                   await signOut(auth);
                   await AsyncStorage.removeItem(SESSION_CACHE_KEY).catch(
+                    () => { },
+                  );
+                  await AsyncStorage.removeItem(LEGACY_SESSION_CACHE_KEY).catch(
                     () => { },
                   );
                   if (mounted) {
@@ -466,14 +478,29 @@ export function useAuth(callbacks?: AuthCallbacks): AuthActions {
                     setCurrentRenterDoc(null);
                   }
                 }
+              } else {
+                // Server returned non-ok status (e.g. 500, 502, 503)
+                // If we do not have a cached currentUser, do not leave token dangling
+                if (!currentUser && mounted) {
+                  setToken(null);
+                }
               }
             } catch (netErr) {
-              // Network error or cold backend: NEVER sign out!
-              // Keep user logged in with their cached session
+              // Network error or cold backend:
+              // Keep user logged in with their cached session if they have one.
+              // If there was no cached user, clear dangling token so user is not stuck.
               console.warn(
                 "Background sync skipped due to network:",
                 netErr,
               );
+              if (!currentUser && mounted) {
+                setToken(null);
+              }
+            }
+          } else {
+            // Already initialized, background refresh of token
+            if (currentUser && mounted) {
+              setToken(idToken);
             }
           }
         } catch (err) {
@@ -540,12 +567,19 @@ export function useAuth(callbacks?: AuthCallbacks): AuthActions {
         const idToken =
           await auth.currentUser.getIdToken();
 
-        await handleAuthenticatedUser(
-          idToken,
-          "RENTER",
-        );
-
-        return;
+        try {
+          await handleAuthenticatedUser(
+            idToken,
+            "RENTER",
+          );
+          return;
+        } catch (profileErr: any) {
+          await signOut(auth).catch(() => {});
+          setToken(null);
+          setCurrentUser(null);
+          setError(profileErr?.message || "Failed to load resident profile. Please try again.");
+          return;
+        }
       }
 
       setShowRenterEmailFallback(true);
@@ -669,6 +703,8 @@ export function useAuth(callbacks?: AuthCallbacks): AuthActions {
       setError("");
     } catch (err: any) {
       await signOut(auth).catch(() => {});
+      setToken(null);
+      setCurrentUser(null);
       setError(err?.message || "Failed to load resident profile. Please try again.");
     } finally {
       setLoading(false);
@@ -812,6 +848,8 @@ export function useAuth(callbacks?: AuthCallbacks): AuthActions {
       setError("");
     } catch (err: any) {
       await signOut(auth).catch(() => {});
+      setToken(null);
+      setCurrentUser(null);
       setError(err?.message || "Failed to load admin profile. Please try again.");
     } finally {
       setLoading(false);
@@ -837,6 +875,9 @@ export function useAuth(callbacks?: AuthCallbacks): AuthActions {
     }
 
     await AsyncStorage.removeItem(SESSION_CACHE_KEY).catch(
+      () => { },
+    );
+    await AsyncStorage.removeItem(LEGACY_SESSION_CACHE_KEY).catch(
       () => { },
     );
 

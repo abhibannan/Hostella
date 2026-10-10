@@ -11,7 +11,7 @@ export interface FinancialSummary {
 }
 
 /** Generate and share a branded PDF Renter Directory */
-export async function exportRenterListPDF(renters: Renter[], hostelName = "StayNexa Property"): Promise<void> {
+export async function exportRenterListPDF(renters: Renter[], hostelName = "Hostella Property"): Promise<void> {
   const dateStr = new Date().toLocaleDateString("en-US", {
     year: "numeric",
     month: "long",
@@ -82,7 +82,7 @@ export async function exportRenterListPDF(renters: Renter[], hostelName = "StayN
           </tbody>
         </table>
         <div class="footer">
-          Generated automatically by StayNexa Property Management Platform • Confidential
+          Generated automatically by Hostella Property Management Platform • Confidential
         </div>
       </body>
     </html>
@@ -102,7 +102,7 @@ export async function exportRenterListPDF(renters: Renter[], hostelName = "StayN
 export async function exportFinancialStatementPDF(
   fees: Fee[],
   summary: FinancialSummary,
-  hostelName = "StayNexa Property",
+  hostelName = "Hostella Property",
   period = "All Time"
 ): Promise<void> {
   const dateStr = new Date().toLocaleDateString("en-US", {
@@ -200,7 +200,7 @@ export async function exportFinancialStatementPDF(
         </table>
 
         <div class="footer">
-          StayNexa Automated Accounting • Certified Property Statement
+          Hostella Automated Accounting • Certified Property Statement
         </div>
       </body>
     </html>

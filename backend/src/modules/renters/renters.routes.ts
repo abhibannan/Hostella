@@ -8,7 +8,7 @@ import {
 import { requireAuth } from "../../middleware/auth.middleware.js";
 import { requireHostelAccess } from "../../middleware/hostel-access.middleware.js";
 import { writeAuditLog } from "../../utils/audit.js";
-import { createNotification } from "../notifications/notifications.server.js";
+
 
 const router = Router();
 

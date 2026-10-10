@@ -98,14 +98,22 @@ router.get(
     try {
       if (!req.authUser) {
         res.status(401).json({
-          message: "StayNexa user profile required",
+          message: "Hostella user profile required",
         });
         return;
       }
 
       if (req.authUser.role === "SUPER_ADMIN") {
-        // Super Admin manages admins and technicals only, not hostel operations
-        res.json({ hostels: [] });
+        const allHostelsSnap = await db.collection("hostels").get();
+        const hostels = allHostelsSnap.docs.map((d) => ({
+          id: d.id,
+          name: d.data()?.name || "Unnamed Hostel",
+          city: d.data()?.city || "",
+          address: d.data()?.address || "",
+          totalRooms: d.data()?.totalRooms || 0,
+          ...d.data(),
+        }));
+        res.json({ hostels });
         return;
       }
 
@@ -267,6 +275,40 @@ router.get(
   },
 );
 
+router.get(
+  "/:hostelId/snapshot",
+  requireAuth,
+  requireHostelAccess,
+  async (req, res, next) => {
+    try {
+      const hostelId = req.params.hostelId;
+
+      if (typeof hostelId !== "string") {
+        res.status(400).json({ message: "Invalid hostel ID" });
+        return;
+      }
+
+      const [roomsSnap, rentersSnap, feesSnap, paymentsSnap, repairsSnap] = await Promise.all([
+        db.collection("rooms").where("hostelId", "==", hostelId).get(),
+        db.collection("renters").where("hostelId", "==", hostelId).get(),
+        db.collection("fees").where("hostelId", "==", hostelId).get(),
+        db.collection("payments").where("hostelId", "==", hostelId).get(),
+        db.collection("repairs").where("hostelId", "==", hostelId).get(),
+      ]);
+
+      const rooms = roomsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      const renters = rentersSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      const fees = feesSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      const payments = paymentsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      const repairs = repairsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+
+      res.json({ rooms, renters, fees, payments, repairs });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
 router.patch(
   "/:hostelId",
   requireAuth,
@@ -344,7 +386,7 @@ router.post(
   requireHostelAccess,
   async (req, res, next) => {
     try {
-      if (req.authUser?.role !== "ADMIN") {
+      if (req.authUser?.role !== "ADMIN" && req.authUser?.role !== "SUPER_ADMIN") {
         res.status(403).json({
           message: "Only administrators can assign staff to a hostel",
         });
@@ -489,7 +531,7 @@ router.delete(
   requireHostelAccess,
   async (req, res, next) => {
     try {
-      if (req.authUser?.role !== "ADMIN") {
+      if (req.authUser?.role !== "ADMIN" && req.authUser?.role !== "SUPER_ADMIN") {
         res.status(403).json({
           message: "Only administrators can remove staff from a hostel",
         });

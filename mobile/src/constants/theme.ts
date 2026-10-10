@@ -1,4 +1,4 @@
-// ── THEME PRESETS ─────────────────────────────────────────────────────────────
+// â”€â”€ THEME PRESETS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // The user can try each theme one by one to pick the best fit.
 // Presets: "royal_indigo" | "oceanic_cobalt" | "sunset_coral" | "electric_violet"
 export type ThemePresetName =
@@ -68,18 +68,18 @@ export const THEME_PRESETS: Record<
   }
 > = {
   royal_indigo: {
-    name: "Theme 1: Royal Indigo & Porcelain Slate",
-    description: "Modern, high-trust SaaS aesthetic (Linear / Stripe). Razor-sharp contrast with porcelain canvas.",
+    name: "Theme 1: Royal Navy & Crisp Sapphire",
+    description: "Executive hospitality aesthetic matching Hostella mockup with deep navy hero and porcelain canvas.",
     light: {
-      primary: "#4F46E5",
-      primaryDark: "#4338CA",
+      primary: "#3B5BFF",
+      primaryDark: "#2744D6",
       primaryLight: "#EEF2FF",
-      background: "#F1F4F9",
+      background: "#F4F7FC",
       card: "#FFFFFF",
-      surfaceSecondary: "#F8FAFC",
+      surfaceSecondary: "#F8FAFD",
       text: "#0F172A",
       secondary: "#64748B",
-      border: "#E2E8F0",
+      border: "#E5EDF6",
       success: "#10B981",
       successLight: "#ECFDF5",
       danger: "#EF4444",
@@ -91,7 +91,7 @@ export const THEME_PRESETS: Record<
       orange: "#F97316",
       orangeLight: "#FFF7ED",
       grayFill: "#E2E8F0",
-      muted: "#F1F4F9",
+      muted: "#F1F5F9",
     },
     dark: {
       primary: "#6366F1",
@@ -539,3 +539,29 @@ export function applyTheme(mode: ThemeMode, systemColorScheme?: string | null) {
   const effectiveDark = mode === "dark" || (mode === "system" && systemColorScheme === "dark");
   Object.assign(COLORS, effectiveDark ? DARK_COLORS : LIGHT_COLORS);
 }
+
+export const RADIUS = {
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 20,
+  xxl: 24,
+  pill: 9999,
+};
+export const GOLD = "#F59E0B";
+export const GRADIENTS = {
+  primary: ["#3B5BFF", "#4F46E5"] as const,
+  success: ["#22C55E", "#16A34A"] as const,
+  warning: ["#F59E0B", "#D97706"] as const,
+  danger: ["#EF4444", "#DC2626"] as const,
+  brand: ["#3B5BFF", "#6366F1"] as const,
+  hero: ["#0A1333", "#122566", "#1E3A8A"] as const,
+  heroDark: ["#050B1E", "#0B163B", "#132357"] as const,
+};
+export const shadow = (elevation: number, isDark: boolean = false) => ({
+  shadowColor: isDark ? "#000" : "#64748B",
+  shadowOffset: { width: 0, height: elevation },
+  shadowOpacity: isDark ? 0.4 : 0.1,
+  shadowRadius: elevation * 1.5,
+  elevation
+});

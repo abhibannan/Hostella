@@ -1,4 +1,4 @@
-# StayNexa Firebase-only Backend
+# HostelDesk Firebase-only Backend
 
 ## Stack
 

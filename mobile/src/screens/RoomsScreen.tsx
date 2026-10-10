@@ -1,7 +1,7 @@
 /**
  * RoomsScreen.tsx
  *
- * Rich room management screen for StayNexa admins.
+ * Rich room management screen for Hostella admins.
  * Features:
  *  - Grid view of all rooms with occupancy indicators
  *  - Tap a room → full detail bottom-sheet with:
@@ -29,9 +29,11 @@ import {
   RefreshControl,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { COLORS } from "../constants/theme";
 import { Hostel, Room, Renter } from "../types";
-import { Header, EmptyState } from "../components/common";
+import { Header, EmptyState, SectionTitle } from "../components/common";
+import { HostellaBrand } from "../components/HostellaBrand";
 import { useTheme } from "../contexts/ThemeContext";
 import { haptic } from "../utils/haptics";
 
@@ -96,9 +98,9 @@ function roomStatusColor(
     return { bg: colors.dangerLight, fg: colors.danger, label: "Full" };
   }
   if (occupantCount > 0) {
-    return { bg: colors.warningLight, fg: colors.warning, label: `${occupantCount}/${max} Occupied` };
+    return { bg: colors.warningLight, fg: colors.warning, label: `${occupantCount}/${max} Taken` };
   }
-  return { bg: colors.successLight, fg: colors.success, label: "Available" };
+  return { bg: colors.successLight, fg: colors.success, label: "Empty Room" };
 }
 
 // ─── RoomsScreen ──────────────────────────────────────────────────────────────
@@ -130,6 +132,14 @@ export function RoomsScreen({
   const [detailVisible, setDetailVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -310,10 +320,10 @@ export function RoomsScreen({
     setRefreshing(false);
   }
 
-  // ── Grid stats & bed capacity ─────────────────────────────────────────────
-  const totalBeds = currentHostelRooms.reduce((sum, r) => sum + (Number(r.maxOccupants) || 2), 0);
+  // ── Grid stats & capacity ─────────────────────────────────────────────────
+  const totalCapacity = currentHostelRooms.reduce((sum, r) => sum + (Number(r.maxOccupants) || 2), 0);
   const totalOccupants = Object.values(occupantCountMap).reduce((sum, count) => sum + count, 0);
-  const availableBeds = Math.max(0, totalBeds - totalOccupants);
+  const availableCapacity = Math.max(0, totalCapacity - totalOccupants);
 
   const transferableRooms = currentHostelRooms.filter((r) => r.id !== selectedRoom?.id);
 
@@ -332,14 +342,14 @@ export function RoomsScreen({
 
   // ── Filter rooms by search ────────────────────────────────────────────────
   const filteredRooms = React.useMemo(() => {
-    if (!searchQuery.trim()) return sortedRooms;
-    const q = searchQuery.trim().toLowerCase();
+    if (!debouncedSearch.trim()) return sortedRooms;
+    const q = debouncedSearch.trim().toLowerCase();
     return sortedRooms.filter((r) => {
       const rn = String(r.roomNumber).toLowerCase();
       const fl = r.floor !== undefined && r.floor !== null ? `floor ${r.floor}` : "ground floor";
       return rn.includes(q) || fl.includes(q);
     });
-  }, [sortedRooms, searchQuery]);
+  }, [sortedRooms, debouncedSearch]);
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
@@ -356,73 +366,102 @@ export function RoomsScreen({
           />
         }
       >
-        <Header
-          title="Rooms"
-          subtitle={selectedHostel?.name || "Select a hostel"}
-          onRefresh={onRefresh}
-        />
-
-        {/* Stats bar */}
-        <View style={styles.statsBar}>
-          <View style={[styles.statChip, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}>
-            <Ionicons name="grid-outline" size={15} color={colors.primary} />
-            <Text style={[styles.statChipText, { color: colors.text }]}>
-              {currentHostelRooms.length} Rooms
-            </Text>
-          </View>
-          <View style={[styles.statChip, { backgroundColor: colors.successLight, borderColor: isDark ? "rgba(34,197,94,0.3)" : "#BBF7D0", borderWidth: 1 }]}>
-            <Ionicons name="bed-outline" size={15} color={colors.success} />
-            <Text style={[styles.statChipText, { color: colors.success }]}>
-              {availableBeds} Beds Open
-            </Text>
-          </View>
-          <View style={[styles.statChip, { backgroundColor: colors.warningLight, borderColor: isDark ? "rgba(245,158,11,0.3)" : "#FED7AA", borderWidth: 1 }]}>
-            <Ionicons name="people-outline" size={15} color={colors.warning} />
-            <Text style={[styles.statChipText, { color: colors.warning }]}>
-              {totalOccupants}/{totalBeds} Occupied
-            </Text>
-          </View>
-        </View>
-
-        {/* Search bar */}
-        <View style={[styles.searchBar, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Ionicons name="search-outline" size={18} color={colors.secondary} />
-          <TextInput
-            style={[styles.searchInput, { color: colors.text }]}
-            placeholder="Search rooms by number or floor..."
-            placeholderTextColor={colors.secondary}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            returnKeyType="search"
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery("")}>
-              <Ionicons name="close-circle" size={18} color={colors.secondary} />
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {/* Action row */}
-        <View style={styles.actionRow}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Room Management</Text>
-          <TouchableOpacity
-            style={[styles.smallPrimaryButton, { backgroundColor: colors.primary }]}
-            onPress={() => {
-              haptic.medium();
-              setShowRoomModal(true);
-            }}
+        {/* ── Deep Royal Navy Hero Banner (Matching Dashboard Theme) ── */}
+        <View style={styles.heroContainer}>
+          <LinearGradient
+            colors={isDark ? ["#060B1E", "#0B163B", "#132357"] : ["#0A1333", "#122566", "#1E3A8A"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0.35, y: 1 }}
+            style={styles.heroBannerGradient}
           >
-            <Ionicons name="add" size={19} color="#FFFFFF" />
-            <Text style={styles.smallPrimaryText}>Add Room</Text>
-          </TouchableOpacity>
+            {/* Ambient Lighting Orbs */}
+            <View style={[styles.ambientOrb, { top: -30, right: -20, width: 160, height: 160, backgroundColor: "rgba(59, 130, 246, 0.22)" }]} />
+            <View style={[styles.ambientOrb, { top: 20, left: -40, width: 130, height: 130, backgroundColor: "rgba(139, 92, 246, 0.2)" }]} />
+
+            {/* Header Top Bar: Hostella Brand + Title + Property Badge + Add CTA */}
+            <View style={{ marginBottom: 8 }}>
+              <HostellaBrand variant="full" colorScheme="dark" size="small" style={{ alignSelf: "flex-start" }} />
+            </View>
+            <View style={styles.heroHeaderRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.heroTitle}>Rooms</Text>
+                <View style={styles.heroPropertyBadge}>
+                  <View style={styles.activeDot} />
+                  <Text style={styles.heroPropertyText} numberOfLines={1}>
+                    {selectedHostel?.name || "Hostella Property"}
+                  </Text>
+                </View>
+              </View>
+
+              <TouchableOpacity
+                style={styles.heroAddBtn}
+                onPress={() => {
+                  haptic.medium();
+                  setShowRoomModal(true);
+                }}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="add" size={17} color="#FFFFFF" />
+                <Text style={styles.heroAddBtnText}>Add Room</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Stats chips inside hero */}
+            <View style={styles.heroStatsRow}>
+              <View style={[styles.heroStatChip, { backgroundColor: "rgba(255,255,255,0.14)" }]}>
+                <Ionicons name="grid" size={13} color="#FFFFFF" />
+                <Text style={[styles.heroStatChipText, { color: "#FFFFFF" }]}>
+                  {currentHostelRooms.length} Rooms
+                </Text>
+              </View>
+
+              <View style={[styles.heroStatChip, { backgroundColor: "rgba(16, 185, 129, 0.22)" }]}>
+                <Ionicons name="people-outline" size={13} color="#34D399" />
+                <Text style={[styles.heroStatChipText, { color: "#34D399" }]}>
+                  {availableCapacity} Available
+                </Text>
+              </View>
+
+              <View style={[styles.heroStatChip, { backgroundColor: "rgba(245, 158, 11, 0.22)" }]}>
+                <Ionicons name="people" size={13} color="#FBBF24" />
+                <Text style={[styles.heroStatChipText, { color: "#FBBF24" }]}>
+                  {totalOccupants}/{totalCapacity} Occupants
+                </Text>
+              </View>
+            </View>
+          </LinearGradient>
+
+          {/* Floating Search Bar */}
+          <View style={styles.floatingSearchWrap}>
+            <View style={[styles.searchBar, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Ionicons name="search-outline" size={18} color={colors.secondary} />
+              <TextInput
+                style={[styles.searchInput, { color: colors.text }]}
+                placeholder="Search room number, floor..."
+                placeholderTextColor={colors.secondary}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                returnKeyType="search"
+              />
+              {searchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setSearchQuery("")} hitSlop={6}>
+                  <Ionicons name="close-circle" size={18} color={colors.secondary} />
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
         </View>
 
-        {/* Room grid */}
-        {currentHostelRooms.length === 0 ? (
+        {/* ── Main Rooms Body ── */}
+        <View style={styles.bodyContent}>
+          <SectionTitle title={`All Rooms (${filteredRooms.length})`} />
+
+          {/* Room grid */}
+          {currentHostelRooms.length === 0 ? (
           <EmptyState
             icon="grid-outline"
             title="No rooms found"
-            description="Add your first room to start managing occupancy."
+            description="Add your first room to start tracking occupants."
           />
         ) : filteredRooms.length === 0 ? (
           <EmptyState
@@ -451,7 +490,7 @@ export function RoomsScreen({
                   {/* Top row: Icon + Delete */}
                   <View style={styles.roomCardHeader}>
                     <View style={[styles.roomIconBox, { backgroundColor: statusInfo.bg }]}>
-                      <Ionicons name="bed-outline" size={18} color={statusInfo.fg} />
+                      <Ionicons name="people-outline" size={18} color={statusInfo.fg} />
                     </View>
                     <TouchableOpacity
                       style={[styles.roomDeleteBtn, { backgroundColor: colors.dangerLight }]}
@@ -493,7 +532,7 @@ export function RoomsScreen({
                     {/* Footer */}
                     <View style={styles.roomCardFooter}>
                       <Text style={[styles.occupantCount, { color: colors.secondary }]}>
-                        {count}{max > 0 ? `/${max}` : ""} {count === 1 ? "bed" : "beds"}
+                        {count}{max > 0 ? `/${max}` : ""} {count === 1 ? "occupant" : "occupants"}
                       </Text>
                       <View style={[styles.statusBadge, { backgroundColor: statusInfo.bg }]}>
                         <Text style={[styles.statusBadgeText, { color: statusInfo.fg }]}>
@@ -507,6 +546,7 @@ export function RoomsScreen({
             })}
           </View>
         )}
+        </View>
       </ScrollView>
 
       {/* ── Add room modal ───────────────────────────────────────────────────── */}
@@ -555,13 +595,13 @@ export function RoomsScreen({
                 keyboardType="numeric"
               />
 
-              <Text style={[styles.label, { color: colors.text }]}>Sharing / Bed Capacity *</Text>
+              <Text style={[styles.label, { color: colors.text }]}>Occupants Capacity *</Text>
               <View style={{ flexDirection: "row", gap: 8, marginBottom: 18 }}>
                 {[
-                  { value: "1", label: "Single" },
-                  { value: "2", label: "2-Share" },
-                  { value: "3", label: "3-Share" },
-                  { value: "4", label: "4-Share" },
+                  { value: "1", label: "1 Occupant" },
+                  { value: "2", label: "2 Occupants" },
+                  { value: "3", label: "3 Occupants" },
+                  { value: "4", label: "4 Occupants" },
                 ].map((opt) => {
                   const isSelected = roomCapacity === opt.value;
                   return (
@@ -582,10 +622,14 @@ export function RoomsScreen({
                     >
                       <Text
                         style={{
-                          fontSize: 12,
+                          fontSize: 11,
                           fontWeight: isSelected ? "700" : "500",
                           color: isSelected ? "#FFFFFF" : colors.text,
+                          textAlign: "center",
                         }}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.8}
                       >
                         {opt.label}
                       </Text>
@@ -1018,45 +1062,69 @@ export function RoomsScreen({
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: COLORS.background },
-  screenContent: { padding: 20, paddingBottom: 110 },
+  screen: { flex: 1 },
+  screenContent: { paddingBottom: 110 },
 
-  // Stats bar
-  statsBar: {
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 16,
-    flexWrap: "wrap",
+  // Hero Section
+  heroContainer: { width: "100%", overflow: "hidden" },
+  heroBannerGradient: {
+    paddingTop: Platform.OS === "ios" ? 18 : 14,
+    paddingBottom: 40,
+    paddingHorizontal: 16,
+    minHeight: 180,
   },
-  statChip: {
+  ambientOrb: { position: "absolute", borderRadius: 999 },
+  heroHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
-    backgroundColor: COLORS.primaryLight,
-    borderRadius: 20,
-    paddingHorizontal: 11,
-    paddingVertical: 6,
-  },
-  statChipText: { fontSize: 12, fontWeight: "700" },
-
-  // Action row
-  actionRow: {
-    marginBottom: 16,
-    flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
+    marginBottom: 16,
   },
-  sectionTitle: { fontSize: 17, fontWeight: "800", color: COLORS.text },
-  smallPrimaryButton: {
+  heroTitle: { fontSize: 26, fontWeight: "800", color: "#FFFFFF", letterSpacing: -0.6 },
+  heroPropertyBadge: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    gap: 6,
+    marginTop: 4,
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(255,255,255,0.14)",
+    paddingHorizontal: 9,
+    paddingVertical: 3.5,
     borderRadius: 12,
   },
-  smallPrimaryText: { color: "#FFFFFF", fontWeight: "700", fontSize: 13 },
+  activeDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#10B981" },
+  heroPropertyText: { fontSize: 11.5, fontWeight: "600", color: "#FFFFFF" },
+  heroAddBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "#3B5BFF",
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 14,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  heroAddBtnText: { color: "#FFFFFF", fontSize: 13, fontWeight: "800" },
+  heroStatsRow: { flexDirection: "row", gap: 8, flexWrap: "wrap", marginTop: 4 },
+  heroStatChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    borderRadius: 14,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+  },
+  heroStatChipText: { fontSize: 12, fontWeight: "700" },
+
+  // Floating search and body
+  floatingSearchWrap: { paddingHorizontal: 16, marginTop: -24, zIndex: 10 },
+  bodyContent: { paddingHorizontal: 16, marginTop: 14 },
 
   // Search bar
   searchBar: {

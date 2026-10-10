@@ -14,6 +14,9 @@ import { generalApiLimiter, authRateLimiter } from "./middleware/rate-limit.midd
 
 const app = express();
 
+// Trust reverse proxy (Render, Cloudflare, AWS) so each user's real IP is tracked independently
+app.set("trust proxy", 1);
+
 app.disable("x-powered-by");
 
 app.use(helmet());

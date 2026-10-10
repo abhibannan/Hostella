@@ -11,7 +11,7 @@ export interface QueuedAction {
   description: string;
 }
 
-const STORAGE_KEY = "@staynexa_offline_action_queue";
+const STORAGE_KEY = "@hosteldesk_offline_action_queue";
 
 let _isOnline = true;
 const listeners = new Set<(online: boolean, queueCount: number) => void>();

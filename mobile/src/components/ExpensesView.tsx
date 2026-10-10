@@ -98,7 +98,7 @@ const CATEGORIES: Array<{
 
 export function ExpensesView({
   hostelId,
-  hostelName = "StayNexa Hostel",
+  hostelName = "Hostella Property",
   token,
   fees = [],
   payments = [],

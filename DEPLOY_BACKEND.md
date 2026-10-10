@@ -1,6 +1,6 @@
-# Deploying StayNexa Backend Online (Render / Railway)
+# Deploying HostelDesk Backend Online (Render / Railway)
 
-This guide walks you through deploying your StayNexa backend so your mobile application can access it from anywhere over the internet.
+This guide walks you through deploying your HostelDesk backend so your mobile application can access it from anywhere over the internet.
 
 ---
 
@@ -19,7 +19,7 @@ git push origin main
 2. Click **New +** -> **Web Service**.
 3. Connect your repository.
 4. Set the following settings:
-   - **Name:** `staynexa-backend`
+   - **Name:** `hosteldesk-backend`
    - **Root Directory:** `backend`
    - **Environment:** `Node`
    - **Build Command:** `npm install && npm run build`
@@ -42,7 +42,7 @@ Go to the **Environment** tab in your service and add the following keys from yo
 
 ### Step 4: Click Deploy
 Once the build completes, Render will provide you with a public URL:
-`https://staynexa-api-xxxx.onrender.com`
+`https://hosteldesk-api-xxxx.onrender.com`
 
 ---
 
@@ -58,9 +58,9 @@ Once the build completes, Render will provide you with a public URL:
 
 Once your backend is live:
 
-1. Open [`mobile/src/services/api.ts`](file:///c:/Users/abhil/Downloads/StayNexa-backend-modified%20-%20Copy%20%282%29/mobile/src/services/api.ts).
+1. Open [`mobile/src/services/api.ts`](file:///c:/Users/abhil/Downloads/HostelDesk-backend-modified%20-%20Copy%20%282%29/mobile/src/services/api.ts).
 2. Update `API_URL` to point to your new cloud URL:
    ```typescript
-   export const API_URL = "https://staynexa-api-xxxx.onrender.com/api/v1";
+   export const API_URL = "https://hosteldesk-api-xxxx.onrender.com/api/v1";
    ```
 3. Test by opening the mobile app and signing in!

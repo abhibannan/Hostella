@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: staynexa-api
+    name: hosteldesk-api
     env: node
     plan: free
     rootDir: backend

@@ -14,11 +14,13 @@ import {
   Alert,
   Image,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "../constants/theme";
 import { Hostel, MaintenanceTask, Renter, Repair, RepairPerson, Room } from "../types";
 import { Header, EmptyState } from "../components/common";
+import { HostellaBrand } from "../components/HostellaBrand";
 import { getName } from "../utils/formatters";
 import { useTheme } from "../contexts/ThemeContext";
 import { setSuspendBiometrics } from "../hooks/useBiometrics";
@@ -307,115 +309,224 @@ export function RepairsScreen({
           />
         }
       >
-        {/* Header */}
-        <View style={styles.topNavRow}>
-          {onBack && (
-            <TouchableOpacity style={[styles.backButton, { backgroundColor: colors.card, borderColor: colors.border }]} onPress={onBack}>
-              <Ionicons name="arrow-back" size={20} color={colors.text} />
-            </TouchableOpacity>
-          )}
-          <View style={{ flex: 1 }}>
-            <Header
-              title="Maintenance & Care"
-              subtitle={selectedHostel?.name || "Repairs, routine maintenance & technicians"}
-              onRefresh={onRefresh}
-            />
-          </View>
-        </View>
+        {/* ── Deep Royal Navy Hero Banner (Matching Dashboard Theme) ── */}
+        <View style={styles.heroContainer}>
+          <LinearGradient
+            colors={isDark ? ["#060B1E", "#0B163B", "#132357"] : ["#0A1333", "#122566", "#1E3A8A"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0.35, y: 1 }}
+            style={styles.heroBannerGradient}
+          >
+            {/* Ambient Lighting Orbs */}
+            <View style={[styles.ambientOrb, { top: -30, right: -20, width: 160, height: 160, backgroundColor: "rgba(59, 130, 246, 0.22)" }]} />
+            <View style={[styles.ambientOrb, { top: 20, left: -40, width: 130, height: 130, backgroundColor: "rgba(139, 92, 246, 0.2)" }]} />
 
-        {/* ── Care & Operations Menu Hub (When in Menu Mode) ── */}
-        {activeOption === "menu" ? (
-          <View style={styles.menuContainer}>
-            {/* Quick Operational Metrics */}
-            <View style={[styles.kpiContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <View style={styles.kpiItem}>
-                <Text style={[styles.kpiLabel, { color: colors.secondary }]}>Open Repairs</Text>
-                <Text style={[styles.kpiValue, { color: countSubmitted + countInProgress > 0 ? COLORS.danger : COLORS.success }]}>
-                  {countSubmitted + countInProgress}
-                </Text>
-              </View>
-              <View style={[styles.kpiDivider, { backgroundColor: colors.border }]} />
-              <View style={styles.kpiItem}>
-                <Text style={[styles.kpiLabel, { color: colors.secondary }]}>Maintenance</Text>
-                <Text style={[styles.kpiValue, { color: countScheduledMaint > 0 ? COLORS.warning : colors.secondary }]}>
-                  {countScheduledMaint}
-                </Text>
-              </View>
-              <View style={[styles.kpiDivider, { backgroundColor: colors.border }]} />
-              <View style={styles.kpiItem}>
-                <Text style={[styles.kpiLabel, { color: colors.secondary }]}>Technicians</Text>
-                <Text style={[styles.kpiValue, { color: colors.text }]}>{repairPersons.length}</Text>
-              </View>
+            {/* Header Top Bar: Hostella Brand + Back Btn + Title + Property Badge + Add CTA */}
+            <View style={{ marginBottom: 8 }}>
+              <HostellaBrand variant="full" colorScheme="dark" size="small" style={{ alignSelf: "flex-start" }} />
             </View>
+            <View style={styles.heroHeaderRow}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
+                {(onBack || activeOption !== "menu") ? (
+                  <TouchableOpacity
+                    style={styles.heroBackBtn}
+                    onPress={() => {
+                      if (activeOption !== "menu") {
+                        setActiveOption("menu");
+                      } else if (onBack) {
+                        onBack();
+                      }
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="arrow-back" size={20} color="#FFFFFF" />
+                  </TouchableOpacity>
+                ) : null}
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.heroTitle}>Repairs & Care</Text>
+                  <View style={styles.heroPropertyBadge}>
+                    <View style={styles.activeDot} />
+                    <Text style={styles.heroPropertyText} numberOfLines={1}>
+                      {selectedHostel?.name || "Hostella Property"}
+                    </Text>
+                  </View>
+                </View>
+              </View>
 
-            <View style={styles.menuHeaderRow}>
-              <Text style={[styles.menuHeaderTitle, { color: colors.text }]}>OPERATIONS & CARE MENU</Text>
-              <Text style={[styles.menuHeaderSub, { color: colors.secondary }]}>Select an operational module or action</Text>
-            </View>
-
-            <View style={styles.menuCardsList}>
-              {/* Option 1: Repairs */}
               <TouchableOpacity
-                style={[styles.menuCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                style={styles.heroAddBtn}
+                onPress={() => {
+                  haptic.medium();
+                  setShowCreateModal(true);
+                }}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="add" size={17} color="#FFFFFF" />
+                <Text style={styles.heroAddBtnText}>Report Issue</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Bento Box of Needs Fix, Routine Tasks, and Staff */}
+            <View style={styles.heroBentoCard}>
+              <TouchableOpacity
+                style={styles.heroBentoItem}
                 onPress={() => setActiveOption("repairs")}
                 activeOpacity={0.75}
               >
-                <View style={[styles.menuIconContainer, { backgroundColor: isDark ? "rgba(239,68,68,0.18)" : COLORS.dangerLight }]}>
-                  <Ionicons name="build-outline" size={22} color={COLORS.danger} />
+                <View style={styles.heroBentoLabelRow}>
+                  <View style={[styles.bentoDot, { backgroundColor: countSubmitted + countInProgress > 0 ? "#EF4444" : "#10B981" }]} />
+                  <Text style={styles.heroBentoLabel}>Needs Fix</Text>
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.menuCardTitle, { color: colors.text }]}>Repair Complaints</Text>
-                </View>
-                <View style={[styles.menuCounterBadge, { backgroundColor: isDark ? "rgba(239,68,68,0.2)" : COLORS.dangerLight }]}>
-                  <Text style={[styles.menuCounterBadgeText, { color: COLORS.danger }]}>{repairs.length} Tickets</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={colors.secondary} />
+                <Text style={[styles.heroBentoVal, { color: countSubmitted + countInProgress > 0 ? "#F87171" : "#34D399" }]}>
+                  {countSubmitted + countInProgress}
+                </Text>
+                <Text style={styles.heroBentoSub}>Complaints</Text>
               </TouchableOpacity>
 
-              {/* Option 2: Maintenance */}
+              <View style={styles.heroBentoDivider} />
+
               <TouchableOpacity
-                style={[styles.menuCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                style={styles.heroBentoItem}
                 onPress={() => {
                   setActiveOption("maintenance");
                   onLoadMaintenanceTasks?.();
                 }}
                 activeOpacity={0.75}
               >
-                <View style={[styles.menuIconContainer, { backgroundColor: isDark ? "rgba(245,158,11,0.18)" : COLORS.warningLight }]}>
-                  <Ionicons name="calendar-outline" size={22} color={COLORS.warning} />
+                <View style={styles.heroBentoLabelRow}>
+                  <Ionicons name="calendar" size={11} color="#FBBF24" />
+                  <Text style={styles.heroBentoLabel}>Routine</Text>
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.menuCardTitle, { color: colors.text }]}>Scheduled Maintenance</Text>
+                <Text style={[styles.heroBentoVal, { color: countScheduledMaint > 0 ? "#FBBF24" : "rgba(255,255,255,0.7)" }]}>
+                  {countScheduledMaint}
+                </Text>
+                <Text style={styles.heroBentoSub}>Tasks</Text>
+              </TouchableOpacity>
+
+              <View style={styles.heroBentoDivider} />
+
+              <TouchableOpacity
+                style={styles.heroBentoItem}
+                onPress={() => {
+                  if (!isRepairPerson) {
+                    setActiveOption("personnel");
+                    onLoadRepairPersons?.();
+                  }
+                }}
+                activeOpacity={0.75}
+              >
+                <View style={styles.heroBentoLabelRow}>
+                  <Ionicons name="people" size={11} color="#93C5FD" />
+                  <Text style={styles.heroBentoLabel}>Workers</Text>
                 </View>
-                <View style={[styles.menuCounterBadge, { backgroundColor: isDark ? "rgba(245,158,11,0.25)" : COLORS.warningLight }]}>
-                  <Text style={[styles.menuCounterBadgeText, { color: COLORS.warning }]}>{maintenanceTasks.length} Tasks</Text>
+                <Text style={[styles.heroBentoVal, { color: "#FFFFFF" }]}>
+                  {repairPersons.length}
+                </Text>
+                <Text style={styles.heroBentoSub}>Staff</Text>
+              </TouchableOpacity>
+            </View>
+          </LinearGradient>
+        </View>
+
+        {/* ── Main Repairs Body ── */}
+        <View style={styles.mainRepairsBody}>
+
+        {/* ── Care & Operations Menu Hub (When in Menu Mode) ── */}
+        {activeOption === "menu" ? (
+          <View style={styles.menuContainer}>
+
+            <View style={styles.menuHeaderRow}>
+              <Text style={[styles.menuHeaderTitle, { color: colors.text }]}>CHOOSE AN ACTION</Text>
+              <Text style={[styles.menuHeaderSub, { color: colors.secondary }]}>Tap below to view complaints or workers</Text>
+            </View>
+
+            <View style={styles.menuGridContainer}>
+              {/* Option 1: Repairs */}
+              <TouchableOpacity
+                style={[styles.menuGridItem, { backgroundColor: colors.card, borderColor: colors.border }]}
+                onPress={() => setActiveOption("repairs")}
+                activeOpacity={0.75}
+              >
+                <View style={[styles.menuGridIcon, { backgroundColor: isDark ? "rgba(239,68,68,0.18)" : COLORS.dangerLight }]}>
+                  <Ionicons name="build-outline" size={24} color={COLORS.danger} />
                 </View>
-                <Ionicons name="chevron-forward" size={18} color={colors.secondary} />
+                <Text style={[styles.menuGridTitle, { color: colors.text }]} numberOfLines={1}>Complaints</Text>
+                <Text style={[styles.menuGridSub, { color: colors.secondary }]}>{repairs.length} Total</Text>
+              </TouchableOpacity>
+
+              {/* Option 2: Maintenance */}
+              <TouchableOpacity
+                style={[styles.menuGridItem, { backgroundColor: colors.card, borderColor: colors.border }]}
+                onPress={() => {
+                  setActiveOption("maintenance");
+                  onLoadMaintenanceTasks?.();
+                }}
+                activeOpacity={0.75}
+              >
+                <View style={[styles.menuGridIcon, { backgroundColor: isDark ? "rgba(245,158,11,0.18)" : COLORS.warningLight }]}>
+                  <Ionicons name="calendar-outline" size={24} color={COLORS.warning} />
+                </View>
+                <Text style={[styles.menuGridTitle, { color: colors.text }]} numberOfLines={1}>Routine Check</Text>
+                <Text style={[styles.menuGridSub, { color: colors.secondary }]}>{maintenanceTasks.length} Tasks</Text>
               </TouchableOpacity>
 
               {/* Option 3: Personnel (Hidden for repair person) */}
               {!isRepairPerson && (
                 <TouchableOpacity
-                  style={[styles.menuCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                  style={[styles.menuGridItem, { backgroundColor: colors.card, borderColor: colors.border }]}
                   onPress={() => {
                     setActiveOption("personnel");
                     onLoadRepairPersons?.();
                   }}
                   activeOpacity={0.75}
                 >
-                  <View style={[styles.menuIconContainer, { backgroundColor: isDark ? "rgba(59,130,246,0.18)" : COLORS.primaryLight }]}>
-                    <Ionicons name="people-outline" size={22} color={COLORS.primary} />
+                  <View style={[styles.menuGridIcon, { backgroundColor: isDark ? "rgba(59,130,246,0.18)" : COLORS.primaryLight }]}>
+                    <Ionicons name="people-outline" size={24} color={COLORS.primary} />
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.menuCardTitle, { color: colors.text }]}>Technicians & Personnel</Text>
-                  </View>
-                  <View style={[styles.menuCounterBadge, { backgroundColor: isDark ? colors.surfaceSecondary : COLORS.grayFill }]}>
-                    <Text style={[styles.menuCounterBadgeText, { color: colors.text }]}>{repairPersons.length} Staff</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={18} color={colors.secondary} />
+                  <Text style={[styles.menuGridTitle, { color: colors.text }]} numberOfLines={1}>Workers</Text>
+                  <Text style={[styles.menuGridSub, { color: colors.secondary }]}>{repairPersons.length} Staff</Text>
                 </TouchableOpacity>
               )}
             </View>
+
+            {/* Quick Actions Header */}
+            <Text style={[styles.menuSectionDividerText, { color: colors.secondary }]}>QUICK SHORTCUTS</Text>
+
+            {/* Action 1: Report Problem */}
+            <TouchableOpacity
+              style={[styles.menuActionCard, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}
+              onPress={() => {
+                haptic.medium();
+                setShowCreateModal(true);
+              }}
+              activeOpacity={0.75}
+            >
+              <View style={[styles.menuActionIconBox, { backgroundColor: COLORS.dangerLight }]}>
+                <Ionicons name="add" size={18} color={COLORS.danger} />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={[styles.menuActionTitle, { color: colors.text }]}>Report a Problem</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.secondary} />
+            </TouchableOpacity>
+
+            {/* Action 2: Schedule Task */}
+            <TouchableOpacity
+              style={[styles.menuActionCard, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border, marginTop: 8 }]}
+              onPress={() => {
+                haptic.medium();
+                setShowScheduleModal(true);
+              }}
+              activeOpacity={0.75}
+            >
+              <View style={[styles.menuActionIconBox, { backgroundColor: COLORS.warningLight }]}>
+                <Ionicons name="calendar" size={18} color={COLORS.warning} />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={[styles.menuActionTitle, { color: colors.text }]}>Schedule Routine Task</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.secondary} />
+            </TouchableOpacity>
           </View>
         ) : (
           /* ── In-Section Top Navigation Bar (When an option is open) ── */
@@ -967,6 +1078,7 @@ export function RepairsScreen({
             )}
           </View>
         )}
+        </View>
       </ScrollView>
 
       {/* ── Status & Notes Modal ── */}
@@ -1619,7 +1731,136 @@ export function RepairsScreen({
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: COLORS.background },
-  screenContent: { padding: 18, paddingBottom: 110 },
+  screenContent: { paddingBottom: 110 },
+  heroContainer: {
+    marginBottom: 4,
+  },
+  heroBannerGradient: {
+    paddingHorizontal: 16,
+    paddingTop: Platform.OS === "ios" ? 18 : 14,
+    paddingBottom: 22,
+    minHeight: 180,
+    position: "relative",
+    overflow: "hidden",
+  },
+  ambientOrb: {
+    position: "absolute",
+    borderRadius: 999,
+  },
+  heroHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 16,
+    zIndex: 2,
+  },
+  heroBackBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  heroTitle: {
+    fontSize: 24,
+    fontWeight: "900",
+    color: "#FFFFFF",
+    letterSpacing: -0.5,
+  },
+  heroPropertyBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 3,
+  },
+  activeDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: "#10B981",
+  },
+  heroPropertyText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "rgba(255, 255, 255, 0.75)",
+  },
+  heroAddBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "#2563EB",
+    paddingHorizontal: 13,
+    paddingVertical: 9,
+    borderRadius: 13,
+    shadowColor: "#000",
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+    elevation: 3,
+  },
+  heroAddBtnText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#FFFFFF",
+  },
+  heroBentoCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.16)",
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    marginTop: 4,
+    zIndex: 2,
+  },
+  heroBentoItem: {
+    flex: 1,
+    alignItems: "center",
+  },
+  heroBentoLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    marginBottom: 4,
+  },
+  bentoDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  heroBentoLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "rgba(255, 255, 255, 0.75)",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  heroBentoVal: {
+    fontSize: 22,
+    fontWeight: "900",
+    letterSpacing: -0.5,
+  },
+  heroBentoSub: {
+    fontSize: 11,
+    color: "rgba(255, 255, 255, 0.55)",
+    marginTop: 2,
+    fontWeight: "500",
+  },
+  heroBentoDivider: {
+    width: 1,
+    height: 38,
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    marginHorizontal: 4,
+  },
+  mainRepairsBody: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+  },
   topNavRow: { flexDirection: "row", alignItems: "center", marginBottom: 6 },
   backButton: {
     width: 38,
@@ -1973,6 +2214,42 @@ const styles = StyleSheet.create({
   menuHeaderRow: { marginBottom: 8 },
   menuHeaderTitle: { fontSize: 13, fontWeight: "800", letterSpacing: 0.5, marginBottom: 2 },
   menuHeaderSub: { fontSize: 12 },
+  menuGridContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+  },
+  menuGridItem: {
+    width: "48%",
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 16,
+    alignItems: "flex-start",
+    marginBottom: 12,
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  menuGridIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+  menuGridTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    letterSpacing: -0.2,
+    marginBottom: 3,
+  },
+  menuGridSub: {
+    fontSize: 12,
+    lineHeight: 16,
+  },
   menuCardsList: { gap: 10 },
   menuCard: {
     flexDirection: "row",

@@ -8,7 +8,7 @@ export async function shareRenterDetails(renter: Renter, hostel?: Hostel | null)
   const rent = renter.monthlyFee ? `₹${renter.monthlyFee.toLocaleString()}` : "Not specified";
   const deposit = renter.securityDeposit ? `₹${renter.securityDeposit.toLocaleString()}` : "Not specified";
   const joined = renter.joiningDate ? new Date(renter.joiningDate).toLocaleDateString() : "N/A";
-  const propertyName = hostel?.name || "StayNexa Resident";
+  const propertyName = hostel?.name || "Hostella Resident";
 
   const message = [
     `📋 *Resident Profile — ${propertyName}*`,
@@ -22,7 +22,7 @@ export async function shareRenterDetails(renter: Renter, hostel?: Hostel | null)
     `🏷️ *Status:* ${renter.status || "ACTIVE"}`,
     ...(renter.guardianName ? [`👥 *Guardian:* ${renter.guardianName} (${renter.guardianPhone || "N/A"})`] : []),
     `──────────────────────`,
-    `Shared via StayNexa Property Management`,
+    `Shared via Hostella Property Management`,
   ].join("\n");
 
   try {

@@ -77,7 +77,7 @@ export function createRateLimiter(options: RateLimitOptions) {
 export const generalApiLimiter = createRateLimiter({
   windowMs: 60 * 1000,
   maxRequests: 300,
-  message: "Too many requests to StayNexa API. Please throttle your client.",
+  message: "Too many requests to Hostella API. Please throttle your client.",
 });
 
 /** Limiter for Auth endpoints: 60 requests / 10 minutes, skips /auth/me checks */

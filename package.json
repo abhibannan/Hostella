@@ -1,7 +1,7 @@
 {
-  "name": "staynexa-monorepo",
+  "name": "hosteldesk-monorepo",
   "version": "1.0.0",
-  "description": "Root package for StayNexa deployment",
+  "description": "Root package for HostelDesk deployment",
   "scripts": {
     "install:all": "npm run install:frontend && npm run install:backend",
     "install:frontend": "cd frontend && npm install",
@@ -14,6 +14,6 @@
   "engines": {
     "node": ">=18.0.0"
   },
-  "author": "StayNexa",
+  "author": "HostelDesk",
   "license": "ISC"
 }

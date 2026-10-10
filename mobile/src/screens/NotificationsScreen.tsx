@@ -17,6 +17,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "../constants/theme";
 import { Hostel, Notification } from "../types";
 import { Header, EmptyState } from "../components/common";
+import { HostellaBrand } from "../components/HostellaBrand";
 import { useTheme } from "../contexts/ThemeContext";
 
 interface NotificationsScreenProps {
@@ -140,7 +141,10 @@ export function NotificationsScreen({
           />
         }
       >
-        {/* Header navigation */}
+        {/* Hostella Brand & Header navigation */}
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <HostellaBrand variant="full" colorScheme={isDark ? "dark" : "light"} size="small" />
+        </View>
         <View style={styles.topNavRow}>
           {onBack && (
             <TouchableOpacity style={[styles.backButton, { backgroundColor: colors.card, borderColor: colors.border }]} onPress={onBack}>

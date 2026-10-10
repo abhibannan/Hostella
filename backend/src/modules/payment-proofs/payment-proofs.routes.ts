@@ -4,7 +4,7 @@ import { db, storage } from "../../config/firebase.js";
 import { requireAuth } from "../../middleware/auth.middleware.js";
 import { requireHostelAccess } from "../../middleware/hostel-access.middleware.js";
 import { writeAuditLog } from "../../utils/audit.js";
-import { createNotification } from "../notifications/notifications.server.js";
+
 
 const router = Router();
 
@@ -48,8 +48,9 @@ async function resolveProofUrlsForPayments(
   })) as Record<string, any>[];
 
   const host = req?.get ? req.get("host") : null;
-  const protocol = req?.protocol || "http";
-  const baseUrl = host ? `${protocol}://${host}` : "";
+  const protocol = req?.protocol || (req?.secure ? "https" : "http");
+  const defaultHost = process.env.APP_URL || "https://staynexa-1.onrender.com";
+  const baseUrl = host ? `${protocol}://${host}` : defaultHost;
 
   // Identify upload IDs that need resolution
   const missingUploadIds = new Set<string>();
@@ -158,7 +159,7 @@ router.get(
 );
 
 /*
- * The actual payment happens outside StayNexa.
+ * The actual payment happens outside Hostella.
  * This endpoint only submits a screenshot/payment-proof record.
  * The fee is NOT marked paid here.
  */
@@ -375,15 +376,7 @@ router.post(
         .get();
       const adminId = String(assignmentSnapshot.data()?.adminId ?? "");
       if (adminId) {
-        await createNotification({
-          userId: adminId,
-          type: "PAYMENT_RECORDED",
-          title: "New payment proof submitted",
-          message: "A renter submitted a payment proof for review.",
-          hostelId,
-          entityType: "PAYMENT",
-          entityId: paymentRef.id,
-        });
+        // notification logic removed
       }
 
       clearPaymentsCache(hostelId);
@@ -529,17 +522,7 @@ router.patch(
         : null;
       const renterUserId = String(renterSnapshot?.data()?.userId ?? "");
       if (renterUserId) {
-        await createNotification({
-          userId: renterUserId,
-          type: "PAYMENT_RECORDED",
-          title: newStatus === "APPROVED" ? "Payment proof approved" : "Payment proof rejected",
-          message: newStatus === "APPROVED"
-            ? "Your payment proof was approved. Your fee record has been updated."
-            : "Your payment proof was rejected. Review the note and submit a new proof if needed.",
-          hostelId,
-          entityType: "PAYMENT",
-          entityId: paymentId,
-        });
+        // notification logic removed
       }
 
       clearPaymentsCache(hostelId);

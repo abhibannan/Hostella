@@ -65,7 +65,7 @@ router.post(
     try {
       if (!req.authUser) {
         res.status(401).json({
-          message: "StayNexa user profile required",
+          message: "Hostella user profile required",
         });
         return;
       }

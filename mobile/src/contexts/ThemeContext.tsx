@@ -3,7 +3,7 @@ import { Appearance, ColorSchemeName } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LIGHT_COLORS, DARK_COLORS, ThemeColors, ThemeMode, applyTheme } from "../constants/theme";
 
-const THEME_STORAGE_KEY = "@staynexa_theme_mode";
+const THEME_STORAGE_KEY = "@hosteldesk_theme_mode";
 
 interface ThemeContextValue {
   themeMode: ThemeMode;

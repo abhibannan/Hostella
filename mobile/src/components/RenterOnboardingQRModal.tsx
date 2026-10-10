@@ -33,18 +33,28 @@ export function RenterOnboardingQRModal({
 }: RenterOnboardingQRModalProps) {
   const { colors, isDark } = useTheme();
   const toast = useToast();
-  const [selectedRoomId, setSelectedRoomId] = useState<string>("");
+  const [selectedRoomId, setSelectedRoomId] = useState<string>("ALL");
   const [showRoomDropdown, setShowRoomDropdown] = useState<boolean>(false);
 
-  useEffect(() => {
-    if (rooms.length > 0 && !selectedRoomId) {
-      setSelectedRoomId(rooms[0].id);
-    }
-  }, [rooms, selectedRoomId]);
-
   const selectedRoom = rooms.find((r) => r.id === selectedRoomId);
-  const roomParam = selectedRoom ? `&room=${encodeURIComponent(selectedRoom.roomNumber)}` : "";
-  const inviteUrl = `https://abhibannan.github.io/StayNexa/?page=join&hostelId=${encodeURIComponent(hostelId)}${roomParam}`;
+  
+  // Available rooms for general selection
+  const availableRooms = rooms.filter(
+    (r) => r.status !== "MAINTENANCE" && r.status !== "INACTIVE"
+  );
+
+  let roomParams = "";
+  if (selectedRoom) {
+    roomParams = `&room=${encodeURIComponent(selectedRoom.roomNumber)}&lockRoom=1`;
+  } else if (availableRooms.length > 0) {
+    const serializedRooms = availableRooms
+      .map((r) => `${encodeURIComponent(r.roomNumber)}:${encodeURIComponent(String(r.floor || ""))}`)
+      .join(";");
+    roomParams = `&rooms=${encodeURIComponent(serializedRooms)}`;
+  }
+
+  const hostelNameParam = hostelName ? `&hostelName=${encodeURIComponent(hostelName)}` : "";
+  const inviteUrl = `https://abhibannan.github.io/HostelDesk/?page=join&hostelId=${encodeURIComponent(hostelId)}${hostelNameParam}${roomParams}`;
 
   const handleCopyLink = async () => {
     await Clipboard.setStringAsync(inviteUrl);
@@ -55,7 +65,7 @@ export function RenterOnboardingQRModal({
     try {
       await Share.share({
         message: `Welcome to ${hostelName}! Complete your self-onboarding registration using this link: ${inviteUrl}`,
-        title: `Join ${hostelName} on StayNexa`,
+        title: `Join ${hostelName} on Hostella`,
       });
     } catch (e) {
       console.warn("Share failed:", e);
@@ -108,7 +118,7 @@ export function RenterOnboardingQRModal({
                 activeOpacity={0.7}
               >
                 <Text style={{ color: colors.text, fontSize: 14, fontWeight: "600" }}>
-                  {selectedRoomId ? rooms.find((r) => r.id === selectedRoomId)?.roomNumber : "Select a Room"}
+                  {selectedRoomId === "ALL" ? "All Rooms (User Selects)" : rooms.find((r) => r.id === selectedRoomId)?.roomNumber || "Select a Room"}
                 </Text>
                 <Ionicons name={showRoomDropdown ? "chevron-up" : "chevron-down"} size={18} color={colors.secondary} />
               </TouchableOpacity>
@@ -116,6 +126,18 @@ export function RenterOnboardingQRModal({
               {showRoomDropdown && (
                 <View style={[styles.dropdownList, { borderColor: colors.border, backgroundColor: colors.card }]}>
                   <ScrollView style={{ maxHeight: 150 }} nestedScrollEnabled showsVerticalScrollIndicator={true}>
+                    <TouchableOpacity
+                      style={styles.dropdownOption}
+                      onPress={() => {
+                        setSelectedRoomId("ALL");
+                        setShowRoomDropdown(false);
+                      }}
+                    >
+                      <Text style={[styles.dropdownOptionText, { color: selectedRoomId === "ALL" ? colors.primary : colors.text }]}>
+                        All Rooms (User Selects)
+                      </Text>
+                      {selectedRoomId === "ALL" && <Ionicons name="checkmark" size={18} color={colors.primary} />}
+                    </TouchableOpacity>
                     {rooms.map((r) => (
                       <TouchableOpacity
                         key={r.id}

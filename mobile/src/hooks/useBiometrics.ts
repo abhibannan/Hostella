@@ -3,7 +3,7 @@ import { AppState, AppStateStatus, Platform } from "react-native";
 import * as LocalAuthentication from "expo-local-authentication";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const BIOMETRICS_PREF_KEY = "@staynexa_biometrics_enabled";
+const BIOMETRICS_PREF_KEY = "@hosteldesk_biometrics_enabled";
 
 export let shouldSuspendBiometrics = false;
 export const setSuspendBiometrics = (val: boolean) => {
@@ -85,7 +85,7 @@ export function useBiometrics(hasSession: boolean): BiometricsState {
     try {
       setAuthError(null);
       const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: "Unlock StayNexa",
+        promptMessage: "Unlock Hostella",
         cancelLabel: "Cancel",
         fallbackLabel: "Use Device Passcode",
         disableDeviceFallback: false,

@@ -1,4 +1,3 @@
-// Remote hosted backend (Render) — always used in production builds
 const REMOTE_API_URL = "https://staynexa-1.onrender.com/api/v1";
 
 // Local development server — only used when DEV flag is set manually

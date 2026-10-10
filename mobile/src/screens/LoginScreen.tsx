@@ -1,17 +1,23 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
+  Animated,
   KeyboardAvoidingView,
+  LayoutChangeEvent,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { useTheme } from "../contexts/ThemeContext";
+import { GRADIENTS, GOLD, RADIUS, shadow } from "../constants/theme";
+import { GradientButton } from "../components/common";
+import { HostellaBrand } from "../components/HostellaBrand";
+import { haptic } from "../utils/haptics";
 
 interface LoginScreenProps {
   loginRole: "RENTER" | "ADMIN";
@@ -40,16 +46,67 @@ interface LoginScreenProps {
   setError: (e: string) => void;
 }
 
+// ── Focus-aware input ────────────────────────────────────────────────────────
+function Field({
+  label,
+  icon,
+  value,
+  onChangeText,
+  placeholder,
+  secure,
+  keyboardType,
+  trailing,
+}: {
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  value: string;
+  onChangeText: (t: string) => void;
+  placeholder: string;
+  secure?: boolean;
+  keyboardType?: "default" | "email-address";
+  trailing?: React.ReactNode;
+}) {
+  const { colors } = useTheme();
+  const [focused, setFocused] = useState(false);
+  return (
+    <View style={{ marginBottom: 14 }}>
+      <Text style={[styles.label, { color: focused ? colors.primary : colors.secondary }]}>{label}</Text>
+      <View
+        style={[
+          styles.field,
+          {
+            backgroundColor: focused ? colors.card : colors.surfaceSecondary,
+            borderColor: focused ? colors.primary : colors.border,
+          },
+        ]}
+      >
+        <Ionicons name={icon} size={19} color={focused ? colors.primary : colors.secondary} />
+        <TextInput
+          style={[styles.fieldInput, { color: colors.text }]}
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor={colors.secondary + "99"}
+          secureTextEntry={secure}
+          keyboardType={keyboardType}
+          autoCapitalize="none"
+          autoCorrect={false}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+        />
+        {trailing}
+      </View>
+    </View>
+  );
+}
+
 export function LoginScreen({
   loginRole,
   setLoginRole,
-  showRenterEmailFallback,
-  setShowRenterEmailFallback,
   renterEmailInput,
   setRenterEmailInput,
   renterPasswordInput,
   setRenterPasswordInput,
-  onLoginWithGoogle,
   onLoginRenterWithEmail,
   onSendPasswordResetLink,
   email,
@@ -66,394 +123,382 @@ export function LoginScreen({
   const { colors, isDark } = useTheme();
   const [showRenterPassword, setShowRenterPassword] = useState(false);
 
+  // Sliding role indicator (optimized for instant snappy sliding)
+  const [switchWidth, setSwitchWidth] = useState(0);
+  const slide = useRef(new Animated.Value(loginRole === "RENTER" ? 0 : 1)).current;
+  useEffect(() => {
+    Animated.spring(slide, {
+      toValue: loginRole === "RENTER" ? 0 : 1,
+      speed: 36,
+      bounciness: 2,
+      useNativeDriver: true,
+    }).start();
+  }, [loginRole, slide]);
+  const segW = Math.max(0, (switchWidth - 8) / 2);
+  const translateX = slide.interpolate({ inputRange: [0, 1], outputRange: [0, segW] });
+
+  const pick = (r: "RENTER" | "ADMIN") => {
+    if (r === loginRole) return;
+    haptic.selection();
+    setLoginRole(r);
+    setError("");
+  };
+
+  const heroColors = isDark ? GRADIENTS.heroDark : GRADIENTS.hero;
+  const isRenter = loginRole === "RENTER";
+
   return (
     <KeyboardAvoidingView
-      style={[styles.loginWrapper, { backgroundColor: colors.background }]}
+      style={[styles.wrapper, { backgroundColor: colors.background }]}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 20}
     >
+      {/* Hero backdrop */}
+      <LinearGradient
+        colors={heroColors}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[styles.hero, { height: 330 }]}
+      >
+        <View style={[styles.orb, { width: 260, height: 260, top: -90, right: -80, backgroundColor: "rgba(255,255,255,0.10)" }]} />
+        <View style={[styles.orb, { width: 180, height: 180, top: 120, left: -70, backgroundColor: "rgba(139,92,246,0.35)" }]} />
+        <View style={[styles.orb, { width: 90, height: 90, top: 70, right: 40, backgroundColor: "rgba(245,181,68,0.22)" }]} />
+      </LinearGradient>
+
       <ScrollView
-        contentContainerStyle={[styles.loginContent, { paddingBottom: 140 }]}
+        contentContainerStyle={{ paddingTop: 28, paddingHorizontal: 20, paddingBottom: 140 }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
-        automaticallyAdjustKeyboardInsets={true}
+        automaticallyAdjustKeyboardInsets
       >
-        <View style={styles.loginInner}>
-          {/* Brand Header */}
-          <View style={styles.brandHero}>
-            <View style={[styles.brandMarkOuter, { backgroundColor: colors.primaryLight }]}>
-              <View style={[styles.brandMark, { backgroundColor: colors.primary }]}>
-                <Ionicons name="business" size={26} color="#FFFFFF" />
-              </View>
+        <View style={styles.inner}>
+          {/* Brand */}
+          <View style={styles.brandRow}>
+            <HostellaBrand variant="icon" size="large" />
+            <View style={{ marginLeft: 14, justifyContent: "center" }}>
+              <HostellaBrand variant="wordmark" colorScheme="dark" size="large" style={{ alignItems: "flex-start" }} />
+              <Text style={styles.brandTag}>Smart hostel & PG management</Text>
             </View>
-            <Text style={[styles.brandTitle, { color: colors.text }]}>StayNexa</Text>
           </View>
 
-          {/* Elevated Floating Auth Card */}
-          <View style={[styles.authCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            {/* Role Switcher */}
-            <View style={[styles.loginRoleSwitch, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
-              <TouchableOpacity
-                style={[
-                  styles.loginRoleTab,
-                  loginRole === "RENTER" && [styles.loginRoleTabActive, { backgroundColor: colors.card, borderColor: colors.border }],
-                ]}
-                onPress={() => {
-                  setLoginRole("RENTER");
-                  setError("");
-                }}
-              >
-                <Ionicons
-                  name={loginRole === "RENTER" ? "person" : "person-outline"}
-                  size={16}
-                  color={loginRole === "RENTER" ? colors.primary : colors.secondary}
-                />
-                <Text
+          <Text style={styles.heroLine}>Run your{"\n"}property beautifully.</Text>
+
+          <View style={styles.chipRow}>
+            {[
+              { i: "home-outline", t: "Rooms" },
+              { i: "wallet-outline", t: "Rent" },
+              { i: "build-outline", t: "Repairs" },
+            ].map((c) => (
+              <View key={c.t} style={styles.chip}>
+                <Ionicons name={c.i as any} size={12} color="#FFFFFF" />
+                <Text style={styles.chipText}>{c.t}</Text>
+              </View>
+            ))}
+          </View>
+
+          {/* Auth card */}
+          <View
+            style={[
+              styles.card,
+              { backgroundColor: colors.card, borderColor: colors.border },
+              shadow(3, isDark),
+            ]}
+          >
+            {/* Role switch */}
+            <View
+              style={[styles.switch, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}
+              onLayout={(e: LayoutChangeEvent) => setSwitchWidth(e.nativeEvent.layout.width)}
+            >
+              {segW > 0 ? (
+                <Animated.View
                   style={[
-                    styles.loginRoleTabText,
-                    { color: colors.secondary },
-                    loginRole === "RENTER" && [styles.loginRoleTabTextActive, { color: colors.primary }],
+                    styles.switchThumb,
+                    { width: segW, transform: [{ translateX }] },
+                    shadow(1, isDark),
+                    { backgroundColor: colors.card },
                   ]}
-                >
+                />
+              ) : null}
+              <Pressable style={styles.switchTab} onPress={() => pick("RENTER")}>
+                <Ionicons
+                  name={isRenter ? "person" : "person-outline"}
+                  size={16}
+                  color={isRenter ? colors.primary : colors.secondary}
+                />
+                <Text style={[styles.switchText, { color: isRenter ? colors.primary : colors.secondary }]}>
                   Resident
                 </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.loginRoleTab,
-                  loginRole === "ADMIN" && [styles.loginRoleTabActive, { backgroundColor: colors.card, borderColor: colors.border }],
-                ]}
-                onPress={() => {
-                  setLoginRole("ADMIN");
-                  setError("");
-                }}
-              >
+              </Pressable>
+              <Pressable style={styles.switchTab} onPress={() => pick("ADMIN")}>
                 <Ionicons
-                  name={
-                    loginRole === "ADMIN"
-                      ? "shield-checkmark"
-                      : "shield-checkmark-outline"
-                  }
+                  name={!isRenter ? "shield-checkmark" : "shield-checkmark-outline"}
                   size={16}
-                  color={loginRole === "ADMIN" ? colors.primary : colors.secondary}
+                  color={!isRenter ? colors.primary : colors.secondary}
                 />
-                <Text
-                  style={[
-                    styles.loginRoleTabText,
-                    { color: colors.secondary },
-                    loginRole === "ADMIN" && [styles.loginRoleTabTextActive, { color: colors.primary }],
-                  ]}
-                >
+                <Text style={[styles.switchText, { color: !isRenter ? colors.primary : colors.secondary }]}>
                   Hostel Admin
                 </Text>
-              </TouchableOpacity>
+              </Pressable>
             </View>
 
-          {/* ── RENTER PANEL ── */}
-          {loginRole === "RENTER" ? (
-            <>
-              <Text style={[styles.loginTitle, { color: colors.text }]}>Resident Portal</Text>
-
-              <Text style={[styles.label, { color: colors.text }]}>Email</Text>
-              <View style={[styles.inputWithIcon, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
-                <Ionicons name="mail-outline" size={20} color={colors.secondary} />
-                <TextInput
-                  style={[styles.inputWithIconText, { color: colors.text }]}
-                  value={renterEmailInput}
-                  onChangeText={(t) => {
-                    setRenterEmailInput(t);
-                    if (error) setError("");
-                  }}
-                  placeholder="Enter registered email"
-                  placeholderTextColor={colors.secondary}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-              </View>
-
-              <Text style={[styles.label, { color: colors.text }]}>Password</Text>
-              <View style={[styles.inputWithIcon, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
-                <Ionicons
-                  name="lock-closed-outline"
-                  size={20}
-                  color={colors.secondary}
-                />
-                <TextInput
-                  style={[styles.inputWithIconText, { color: colors.text }]}
-                  value={renterPasswordInput}
-                  onChangeText={(t) => {
-                    setRenterPasswordInput(t);
-                    if (error) setError("");
-                  }}
-                  placeholder="Enter your password"
-                  placeholderTextColor={colors.secondary}
-                  secureTextEntry={!showRenterPassword}
-                  autoCapitalize="none"
-                />
-                <TouchableOpacity onPress={() => setShowRenterPassword((v) => !v)}>
-                  <Ionicons
-                    name={showRenterPassword ? "eye-off-outline" : "eye-outline"}
-                    size={21}
-                    color={colors.secondary}
-                  />
-                </TouchableOpacity>
-              </View>
-
-              <TouchableOpacity
-                style={[styles.primaryButton, { backgroundColor: colors.primary, marginTop: 12 }]}
-                disabled={loading}
-                onPress={onLoginRenterWithEmail}
-              >
-                {loading ? (
-                  <ActivityIndicator color="#FFFFFF" />
-                ) : (
-                  <>
-                    <Text style={styles.primaryButtonText}>Sign In as Resident</Text>
-                    <Ionicons name="arrow-forward" size={19} color="#FFFFFF" />
-                  </>
-                )}
-              </TouchableOpacity>
-
-              {onSendPasswordResetLink ? (
-                <TouchableOpacity
-                  style={{ marginTop: 16, alignItems: "center" }}
-                  onPress={onSendPasswordResetLink}
-                >
-                  <Text style={{ fontSize: 13, color: colors.primary, fontWeight: "600" }}>
-                    Need to set or forgot password? Send Setup Link
+            <View>
+              {isRenter ? (
+                <>
+                  <Text style={[styles.title, { color: colors.text }]}>Resident Portal</Text>
+                  <Text style={[styles.subtitle, { color: colors.secondary }]}>
+                    Check your rent, upload payment proof and raise repair requests.
                   </Text>
-                </TouchableOpacity>
-              ) : null}
-            </>
-          ) : (
-            /* ── ADMIN PANEL ── */
-            <>
-              <Text style={[styles.loginTitle, { color: colors.text }]}>Admin Login</Text>
 
-              <Text style={[styles.label, { color: colors.text }]}>Email or Mobile Number</Text>
-              <View style={[styles.inputWithIcon, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
-                <Ionicons name="person-outline" size={20} color={colors.secondary} />
-                <TextInput
-                  style={[styles.inputWithIconText, { color: colors.text }]}
-                  value={email}
-                  onChangeText={(t) => {
-                    setEmail(t);
-                    if (error) setError("");
-                  }}
-                  placeholder="Enter email or mobile number"
-                  placeholderTextColor={colors.secondary}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-              </View>
-
-              <Text style={[styles.label, { color: colors.text }]}>Password</Text>
-              <View style={[styles.inputWithIcon, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
-                <Ionicons
-                  name="lock-closed-outline"
-                  size={20}
-                  color={colors.secondary}
-                />
-                <TextInput
-                  style={[styles.inputWithIconText, { color: colors.text }]}
-                  value={password}
-                  onChangeText={(t) => {
-                    setPassword(t);
-                    if (error) setError("");
-                  }}
-                  placeholder="Enter your password"
-                  placeholderTextColor={colors.secondary}
-                  secureTextEntry={!showPassword}
-                  autoCapitalize="none"
-                />
-                <TouchableOpacity onPress={() => setShowPassword((v) => !v)}>
-                  <Ionicons
-                    name={showPassword ? "eye-off-outline" : "eye-outline"}
-                    size={21}
-                    color={colors.secondary}
+                  <Field
+                    label="EMAIL"
+                    icon="mail-outline"
+                    value={renterEmailInput}
+                    onChangeText={(t) => {
+                      setRenterEmailInput(t);
+                      if (error) setError("");
+                    }}
+                    placeholder="Enter registered email"
+                    keyboardType="email-address"
                   />
-                </TouchableOpacity>
-              </View>
+                  <Field
+                    label="PASSWORD"
+                    icon="lock-closed-outline"
+                    value={renterPasswordInput}
+                    onChangeText={(t) => {
+                      setRenterPasswordInput(t);
+                      if (error) setError("");
+                    }}
+                    placeholder="Enter your password"
+                    secure={!showRenterPassword}
+                    trailing={
+                      <Pressable hitSlop={10} onPress={() => setShowRenterPassword((v) => !v)}>
+                        <Ionicons
+                          name={showRenterPassword ? "eye-off-outline" : "eye-outline"}
+                          size={20}
+                          color={colors.secondary}
+                        />
+                      </Pressable>
+                    }
+                  />
 
-              <TouchableOpacity
-                style={[styles.primaryButton, { backgroundColor: colors.primary, marginTop: 12 }]}
-                disabled={loading}
-                onPress={onLoginAdmin}
-              >
-                {loading ? (
-                  <ActivityIndicator color="#FFFFFF" />
-                ) : (
-                  <>
-                    <Text style={styles.primaryButtonText}>Sign In to Management</Text>
-                    <Ionicons name="arrow-forward" size={19} color="#FFFFFF" />
-                  </>
-                )}
-              </TouchableOpacity>
+                  <GradientButton
+                    label="Sign In as Resident"
+                    icon="arrow-forward"
+                    loading={loading}
+                    onPress={onLoginRenterWithEmail}
+                    style={{ marginTop: 6 }}
+                  />
 
-              {onSendPasswordResetLink ? (
-                <TouchableOpacity
-                  style={{ marginTop: 14, alignItems: "center" }}
-                  onPress={onSendPasswordResetLink}
-                >
-                  <Text style={{ fontSize: 13, color: colors.primary, fontWeight: "600" }}>
-                    Forgot password? Send Reset Email
+                  {onSendPasswordResetLink ? (
+                    <Pressable style={styles.linkBtn} onPress={onSendPasswordResetLink} hitSlop={8}>
+                      <Text style={[styles.linkText, { color: colors.primary }]}>
+                        Need to set or forgot password? Send Setup Link
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  <Text style={[styles.title, { color: colors.text }]}>Admin Login</Text>
+                  <Text style={[styles.subtitle, { color: colors.secondary }]}>
+                    Manage properties, rooms, residents and collections.
                   </Text>
-                </TouchableOpacity>
-              ) : null}
-            </>
-          )}
 
-          {/* Error box */}
-          {error ? (
-            <View style={[styles.errorBox, { backgroundColor: colors.dangerLight, borderColor: isDark ? "rgba(239,68,68,0.3)" : "#FECACA" }]}>
-              <Ionicons name="alert-circle-outline" size={18} color={colors.danger} />
-              <Text style={[styles.errorText, { color: colors.danger }]}>{error}</Text>
+                  <Field
+                    label="EMAIL OR MOBILE NUMBER"
+                    icon="person-outline"
+                    value={email}
+                    onChangeText={(t) => {
+                      setEmail(t);
+                      if (error) setError("");
+                    }}
+                    placeholder="Enter email or mobile number"
+                  />
+                  <Field
+                    label="PASSWORD"
+                    icon="lock-closed-outline"
+                    value={password}
+                    onChangeText={(t) => {
+                      setPassword(t);
+                      if (error) setError("");
+                    }}
+                    placeholder="Enter your password"
+                    secure={!showPassword}
+                    trailing={
+                      <Pressable hitSlop={10} onPress={() => setShowPassword((v) => !v)}>
+                        <Ionicons
+                          name={showPassword ? "eye-off-outline" : "eye-outline"}
+                          size={20}
+                          color={colors.secondary}
+                        />
+                      </Pressable>
+                    }
+                  />
+
+                  <GradientButton
+                    label="Sign In to Management"
+                    icon="arrow-forward"
+                    loading={loading}
+                    onPress={onLoginAdmin}
+                    style={{ marginTop: 6 }}
+                  />
+
+                  {onSendPasswordResetLink ? (
+                    <Pressable style={styles.linkBtn} onPress={onSendPasswordResetLink} hitSlop={8}>
+                      <Text style={[styles.linkText, { color: colors.primary }]}>
+                        Forgot password? Send Reset Email
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                </>
+              )}
             </View>
-          ) : null}
 
-          {/* Trust Footer */}
-          <View style={styles.trustBadge}>
-            <Ionicons name="shield-checkmark-outline" size={13} color={colors.secondary} />
-            <Text style={[styles.trustBadgeText, { color: colors.secondary }]}>
-              256-bit Encrypted Cloud Operations • StayNexa
+            {error ? (
+              <View
+                style={[
+                  styles.errorBox,
+                  {
+                    backgroundColor: colors.dangerLight,
+                    borderColor: isDark ? "rgba(255,92,122,0.35)" : "#FFD0D8",
+                  },
+                ]}
+              >
+                <Ionicons name="alert-circle" size={18} color={colors.danger} />
+                <Text style={[styles.errorText, { color: colors.danger }]}>{error}</Text>
+              </View>
+            ) : null}
+          </View>
+
+          {/* Trust footer */}
+          <View style={styles.trust}>
+            <Ionicons name="shield-checkmark" size={13} color={GOLD} />
+            <Text style={[styles.trustText, { color: colors.secondary }]}>
+              256-bit encrypted cloud operations • Hostella
             </Text>
           </View>
         </View>
-      </View>
-    </ScrollView>
-  </KeyboardAvoidingView>
-);
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
 }
 
 const styles = StyleSheet.create({
-  loginWrapper: { flex: 1 },
-  loginContent: { flexGrow: 1, justifyContent: "center", padding: 20, paddingVertical: 36 },
-  loginInner: {
-    width: "100%",
-    maxWidth: 440,
-    alignSelf: "center",
+  wrapper: { flex: 1 },
+  hero: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    borderBottomLeftRadius: RADIUS.xxl + 8,
+    borderBottomRightRadius: RADIUS.xxl + 8,
+    overflow: "hidden",
   },
-  brandHero: {
-    alignItems: "center",
-    marginBottom: 20,
-  },
-  brandMarkOuter: {
-    width: 68,
-    height: 68,
-    borderRadius: 22,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 12,
-  },
+  orb: { position: "absolute", borderRadius: 999 },
+  inner: { width: "100%", maxWidth: 460, alignSelf: "center" },
+
+  brandRow: { flexDirection: "row", alignItems: "center" },
   brandMark: {
     width: 52,
     height: 52,
-    borderRadius: 16,
+    borderRadius: 17,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.35)",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#0F172A",
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 3,
   },
-  brandTitle: {
-    fontSize: 28,
+  brandSpark: {
+    position: "absolute",
+    top: 7,
+    right: 7,
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: GOLD,
+  },
+  brandTitle: { color: "#FFFFFF", fontSize: 26, fontWeight: "800", letterSpacing: -0.7 },
+  brandTag: { color: "rgba(255,255,255,0.72)", fontSize: 12, fontWeight: "600", marginTop: 1 },
+
+  heroLine: {
+    color: "#FFFFFF",
+    fontSize: 31,
+    lineHeight: 37,
     fontWeight: "800",
-    letterSpacing: -0.6,
+    letterSpacing: -1,
+    marginTop: 26,
   },
-  authCard: {
-    borderRadius: 24,
+  chipRow: { flexDirection: "row", gap: 8, marginTop: 14, marginBottom: 26 },
+  chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: RADIUS.pill,
+    backgroundColor: "rgba(255,255,255,0.16)",
     borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.22)",
+  },
+  chipText: { color: "#FFFFFF", fontSize: 12, fontWeight: "700" },
+
+  card: {
+    borderRadius: RADIUS.xxl,
+    borderWidth: StyleSheet.hairlineWidth * 2,
     padding: 22,
-    shadowColor: "#0F172A",
-    shadowOpacity: 0.06,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 3,
   },
-  loginRoleSwitch: {
+  switch: {
     flexDirection: "row",
-    borderRadius: 14,
+    borderRadius: RADIUS.md,
     padding: 4,
-    marginBottom: 20,
+    marginBottom: 22,
     borderWidth: 1,
   },
-  loginRoleTab: {
+  switchThumb: {
+    position: "absolute",
+    top: 4,
+    bottom: 4,
+    left: 4,
+    borderRadius: RADIUS.sm,
+  },
+  switchTab: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 10,
-    borderRadius: 11,
     gap: 6,
+    paddingVertical: 11,
   },
-  loginRoleTabActive: {
-    borderWidth: 1,
-    shadowColor: "#0F172A",
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  loginRoleTabText: { fontSize: 13, fontWeight: "600" },
-  loginRoleTabTextActive: { fontWeight: "700" },
-  loginTitle: { fontSize: 22, fontWeight: "800", letterSpacing: -0.4, marginBottom: 18 },
-  label: {
-    fontSize: 12,
-    fontWeight: "700",
-    marginBottom: 6,
-    marginTop: 4,
-  },
-  inputWithIcon: {
-    minHeight: 52,
-    borderWidth: 1,
-    borderRadius: 14,
-    paddingHorizontal: 14,
+  switchText: { fontSize: 13, fontWeight: "800" },
+
+  title: { fontSize: 24, fontWeight: "800", letterSpacing: -0.7 },
+  subtitle: { fontSize: 13, lineHeight: 19, marginTop: 5, marginBottom: 20 },
+
+  label: { fontSize: 10.5, fontWeight: "800", letterSpacing: 1.1, marginBottom: 7, marginLeft: 2 },
+  field: {
+    minHeight: 54,
+    borderRadius: RADIUS.md,
+    borderWidth: 1.5,
+    paddingHorizontal: 15,
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 12,
   },
-  inputWithIconText: {
-    flex: 1,
-    minHeight: 50,
-    marginLeft: 9,
-    fontSize: 14,
-  },
-  primaryButton: {
-    minHeight: 52,
-    borderRadius: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingHorizontal: 16,
-    shadowColor: "#4F46E5",
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  primaryButtonText: { color: "#FFFFFF", fontSize: 15, fontWeight: "800" },
+  fieldInput: { flex: 1, minHeight: 52, marginLeft: 11, fontSize: 15, fontWeight: "500" },
+
+  linkBtn: { marginTop: 18, alignItems: "center" },
+  linkText: { fontSize: 13, fontWeight: "700" },
+
   errorBox: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 8,
+    gap: 9,
     borderWidth: 1,
-    borderRadius: 14,
-    padding: 12,
-    marginTop: 14,
+    borderRadius: RADIUS.md,
+    padding: 13,
+    marginTop: 16,
   },
-  errorText: { flex: 1, fontSize: 12, lineHeight: 18 },
-  btnDisabled: { opacity: 0.6 },
-  trustBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    marginTop: 18,
-  },
-  trustBadgeText: {
-    fontSize: 11,
-    fontWeight: "500",
-  },
+  errorText: { flex: 1, fontSize: 12.5, lineHeight: 18, fontWeight: "600" },
+
+  trust: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 22 },
+  trustText: { fontSize: 11, fontWeight: "600" },
 });

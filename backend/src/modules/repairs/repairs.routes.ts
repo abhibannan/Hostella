@@ -6,6 +6,7 @@ import { requireHostelAccess } from "../../middleware/hostel-access.middleware.j
 import { writeAuditLog } from "../../utils/audit.js";
 import { createNotification } from "../notifications/notifications.server.js";
 
+
 const router = Router();
 
 const repairsCache = new Map<string, { repairs: any[]; expiresAt: number }>();
@@ -211,30 +212,63 @@ router.post(
 
       // Auto-notify admins and repair personnel
       try {
-        const [hostelAdminsSnap, repairPersonsSnap] = await Promise.all([
+        const [hostelAdminsSnap, repairPersonsSnap, rpUsersSnap] = await Promise.all([
           db.collection("hostelAdmins").where("hostelId", "==", hostelId).get(),
-          db.collection("repairPersons").where("hostelId", "==", hostelId).where("status", "==", "ACTIVE").get()
+          db.collection("repairPersons").where("status", "==", "ACTIVE").get(),
+          db.collection("users").where("role", "==", "REPAIR_PERSON").where("status", "==", "ACTIVE").get(),
         ]);
 
         const adminIds = hostelAdminsSnap.docs.map((d) => d.data().adminId).filter(Boolean);
-        const repairUserIds = repairPersonsSnap.docs.map((d) => d.data().userId).filter(Boolean);
         
-        const notifyIds = [...new Set([...adminIds, ...repairUserIds])];
-        
-        const renterName = renterData?.firstName ? `${renterData.firstName} ${renterData.lastName || ""}`.trim() : "A resident";
-        const roomName = renterData?.roomName || roomId ? `Room ${renterData?.roomName || roomId}` : "a room";
+        // Repair personnel active for this hostel or across portfolio
+        const repairUserIds: string[] = [];
+        repairPersonsSnap.docs.forEach((d) => {
+          const data = d.data();
+          if (!data.hostelId || data.hostelId === hostelId) {
+            if (data.userId) repairUserIds.push(data.userId);
+          }
+        });
+        rpUsersSnap.docs.forEach((d) => {
+          const data = d.data();
+          const hIds = Array.isArray(data.hostelIds) ? data.hostelIds : [];
+          if (hIds.length === 0 || hIds.includes(hostelId)) {
+            repairUserIds.push(d.id);
+          }
+        });
 
-        await Promise.all(notifyIds.map(userId => 
-          createNotification({
-            userId: String(userId),
-            type: "REPAIR_CREATED",
-            title: `New Repair Request: ${parsed.data.title}`,
-            message: `${renterName} in ${roomName} reported an issue: ${parsed.data.description.substring(0, 100)}${parsed.data.description.length > 100 ? '...' : ''}. Priority: ${parsed.data.priority || "MEDIUM"}.`,
-            hostelId,
-            entityType: "REPAIR",
-            entityId: repairRef.id,
-          }).catch(() => {})
-        ));
+        // Determine room display label
+        let roomLabel = "a room";
+        if (roomId) {
+          try {
+            const rSnap = await db.collection("rooms").doc(roomId).get();
+            if (rSnap.exists && rSnap.data()?.roomNumber) {
+              roomLabel = `Room ${rSnap.data()?.roomNumber}`;
+            } else {
+              roomLabel = `Room ${roomId}`;
+            }
+          } catch {
+            roomLabel = `Room ${roomId}`;
+          }
+        }
+
+        const renterName = renterData?.firstName
+          ? `${renterData.firstName} ${renterData.lastName || ""}`.trim()
+          : "A resident";
+        const notifyTargetIds = [...new Set([...repairUserIds, ...adminIds])];
+
+        await Promise.allSettled(
+          notifyTargetIds.map((targetUserId) =>
+            createNotification({
+              userId: targetUserId,
+              type: "REPAIR_CREATED",
+              title: `New Repair Request: ${repair.title}`,
+              message: `${renterName} reported a repair in ${roomLabel} (${repair.priority} priority): ${repair.description}`,
+              hostelId,
+              entityType: "REPAIR",
+              entityId: repairRef.id,
+            })
+          )
+        );
       } catch (notifyErr) {
         console.error("Failed to notify staff about new repair:", notifyErr);
       }
@@ -507,6 +541,29 @@ router.patch(
       await repairRef.update(updateData);
 
       const updated = await repairRef.get();
+      const updatedData = updated.data();
+
+      // If a repair person is assigned, notify them directly
+      if (parsed.data.assignedRepairPersonId) {
+        try {
+          let assignedUserId = parsed.data.assignedRepairPersonId;
+          const rpDoc = await db.collection("repairPersons").doc(parsed.data.assignedRepairPersonId).get();
+          if (rpDoc.exists && rpDoc.data()?.userId) {
+            assignedUserId = rpDoc.data()!.userId;
+          }
+          await createNotification({
+            userId: assignedUserId,
+            type: "REPAIR_UPDATED",
+            title: `Assigned Repair Request: ${updatedData?.title || "Repair Ticket"}`,
+            message: `You have been assigned to repair "${updatedData?.title || "ticket"}" (${updatedData?.priority || "MEDIUM"} priority).`,
+            hostelId,
+            entityType: "REPAIR",
+            entityId: repairId,
+          });
+        } catch (assignErr) {
+          console.error("Failed to notify assigned repair person:", assignErr);
+        }
+      }
 
       await writeAuditLog({
         actorId: req.authUser.id,

@@ -41,8 +41,7 @@ import * as ImageManipulator from "expo-image-manipulator";
 
 import { COLORS } from "./src/constants/theme";
 import { ThemeProvider, useTheme } from "./src/contexts/ThemeContext";
-import { useExpoPushNotifications } from "./src/hooks/useExpoPushNotifications";
-import { useNotificationSync } from "./src/hooks/useNotificationSync";
+
 import { Hostel, Renter, Tab } from "./src/types";
 import { dashboardFrom } from "./src/utils/formatters";
 import { API_URL, parseJsonResponse, warmupApi } from "./src/services/api";
@@ -54,8 +53,11 @@ import { useRoomActions } from "./src/hooks/useRoomActions";
 import { useRenterActions } from "./src/hooks/useRenterActions";
 import { useFeeActions } from "./src/hooks/useFeeActions";
 import { usePaymentActions } from "./src/hooks/usePaymentActions";
-import { useNotificationActions } from "./src/hooks/useNotificationActions";
+
 import { useRepairActions } from "./src/hooks/useRepairActions";
+import { useNotificationActions } from "./src/hooks/useNotificationActions";
+import { useNotificationSync } from "./src/hooks/useNotificationSync";
+import { useExpoPushNotifications } from "./src/hooks/useExpoPushNotifications";
 
 // Screens
 import { LoginScreen } from "./src/screens/LoginScreen";
@@ -68,6 +70,7 @@ import { FeesScreen } from "./src/screens/FeesScreen";
 import { PaymentsScreen } from "./src/screens/PaymentsScreen";
 import { RepairsScreen } from "./src/screens/RepairsScreen";
 import { NotificationsScreen } from "./src/screens/NotificationsScreen";
+
 import { MoreScreen } from "./src/screens/MoreScreen";
 import { SuperAdminScreen } from "./src/screens/SuperAdminScreen";
 import { ThemedAlertModal } from "./src/components/ThemedAlertModal";
@@ -75,7 +78,7 @@ import { BiometricLockOverlay } from "./src/components/BiometricLockOverlay";
 import { useBiometrics } from "./src/hooks/useBiometrics";
 import { ErrorBoundary } from "./src/components/ErrorBoundary";
 import { ToastProvider, useToast } from "./src/contexts/ToastContext";
-import { useSessionTimeout } from "./src/hooks/useSessionTimeout";
+
 import { OfflineBanner } from "./src/components/OfflineBanner";
 import { flushOfflineQueue } from "./src/services/offlineQueue";
 import { AuditLogModal } from "./src/components/AuditLogModal";
@@ -89,9 +92,9 @@ WebBrowser.maybeCompleteAuthSession();
 
 const ADMIN_TABS: Tab[] = [
   "dashboard",
-  "hostels",
   "rooms",
   "renters",
+  "payments",
   "more",
 ];
 
@@ -116,30 +119,15 @@ function AppContent() {
   const toast = useToast();
   const [page, setPageState] = useState<Tab>("dashboard");
   const [pageHistory, setPageHistory] = useState<Tab[]>(["dashboard"]);
-  const [visitedTabs, setVisitedTabs] = useState<Set<Tab>>(() => new Set(["dashboard"]));
   const [paymentsInitialOption, setPaymentsInitialOption] = useState<"menu" | "fees_all" | "fees_paid" | "fees_unpaid" | "proofs" | "reminders" | "expenses">("menu");
   const [showAuditModal, setShowAuditModal] = useState(false);
   const [containerWidth, setContainerWidth] = useState(
     Dimensions.get("window").width,
   );
   const pageScrollRef = useRef<ScrollView>(null);
+  const [mountedTabs, setMountedTabs] = useState<Set<string>>(() => new Set(["dashboard"]));
 
-  // Push Notification Deep Linking (Tap a payment received notification → jump to proof)
-  const handleNotificationResponse = useCallback((payload: Record<string, unknown>) => {
-    if (payload.screen === "payments" || payload.type === "PAYMENT_PROOF") {
-      setPaymentsInitialOption("proofs");
-      setPageState("payments");
-    } else if (payload.type === "REPAIR" || payload.screen === "repairs") {
-      setPageState("repairs");
-    } else if (payload.type === "FEE" || payload.screen === "fees") {
-      setPaymentsInitialOption("fees_all");
-      setPageState("payments");
-    } else if (payload.targetTab && typeof payload.targetTab === "string") {
-      setPageState(payload.targetTab as Tab);
-    }
-  }, []);
 
-  const { getExpoPushToken, scheduleLocalNotification } = useExpoPushNotifications(handleNotificationResponse);
 
   // Platform Maintenance & Alert Banner State (Features 2 & 5)
   const [platformStatus, setPlatformStatus] = useState<PlatformStatus | null>(null);
@@ -172,8 +160,8 @@ function AppContent() {
     const bannerBg = isCritical
       ? (isDark ? "rgba(239, 68, 68, 0.15)" : "#FEF2F2")
       : isWarn
-      ? (isDark ? "rgba(245, 158, 11, 0.15)" : "#FFFBEB")
-      : (isDark ? "rgba(56, 189, 248, 0.15)" : "#F0F9FF");
+        ? (isDark ? "rgba(245, 158, 11, 0.15)" : "#FFFBEB")
+        : (isDark ? "rgba(56, 189, 248, 0.15)" : "#F0F9FF");
     const bannerBorder = isCritical ? "#EF4444" : isWarn ? "#F59E0B" : "#0284C7";
     const bannerIcon = isCritical ? "alert-circle" : isWarn ? "warning" : "information-circle";
 
@@ -203,12 +191,7 @@ function AppContent() {
       if (ADMIN_TABS.includes(prevPage)) {
         const targetIdx = ADMIN_TABS.indexOf(prevPage);
         if (targetIdx >= 0 && containerWidth > 0) {
-          setTimeout(() => {
-            pageScrollRef.current?.scrollTo({
-              x: targetIdx * containerWidth,
-              animated: true,
-            });
-          }, 50);
+          pageScrollRef.current?.scrollTo({ x: targetIdx * containerWidth, animated: true });
         }
       }
       return updated;
@@ -233,36 +216,55 @@ function AppContent() {
     const normalized = next === "fees" ? "payments" : next;
     setPageHistory((prev) => (prev[prev.length - 1] === normalized ? prev : [...prev, normalized]));
     setPageState(normalized);
+    setMountedTabs((prev) => {
+      if (prev.has(normalized)) return prev;
+      const nextSet = new Set(prev);
+      nextSet.add(normalized);
+      return nextSet;
+    });
     if (ADMIN_TABS.includes(normalized)) {
-      setVisitedTabs((prev) => {
-        if (prev.has(normalized)) return prev;
-        const copy = new Set(prev);
-        copy.add(normalized);
-        return copy;
-      });
       const targetIdx = ADMIN_TABS.indexOf(normalized);
       if (targetIdx >= 0 && containerWidth > 0) {
-        setTimeout(() => {
-          pageScrollRef.current?.scrollTo({
-            x: targetIdx * containerWidth,
-            animated: true,
-          });
-        }, 50);
+        // Instant snap on tap so bottom menu responds without delay
+        pageScrollRef.current?.scrollTo({ x: targetIdx * containerWidth, animated: false });
+      }
+    }
+  };
+
+  const onPageScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const offsetX = e.nativeEvent.contentOffset.x;
+    const width = containerWidth || Dimensions.get("window").width;
+    if (width <= 0) return;
+    const idx = Math.round(offsetX / width);
+    if (idx >= 0 && idx < ADMIN_TABS.length) {
+      const targetTab = ADMIN_TABS[idx];
+      if (targetTab) {
+        setMountedTabs((prev) => {
+          if (prev.has(targetTab)) return prev;
+          const nextSet = new Set(prev);
+          nextSet.add(targetTab);
+          return nextSet;
+        });
+        if (targetTab !== page) {
+          setPageState(targetTab);
+        }
       }
     }
   };
 
   const onPageScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const offsetX = e.nativeEvent.contentOffset.x;
-    const idx = Math.round(offsetX / (containerWidth || 1));
+    const width = containerWidth || Dimensions.get("window").width;
+    if (width <= 0) return;
+    const idx = Math.round(offsetX / width);
     if (idx >= 0 && idx < ADMIN_TABS.length) {
       const targetTab = ADMIN_TABS[idx];
-      if (targetTab && targetTab !== page) {
-        setVisitedTabs((prev) => {
+      if (targetTab) {
+        setMountedTabs((prev) => {
           if (prev.has(targetTab)) return prev;
-          const copy = new Set(prev);
-          copy.add(targetTab);
-          return copy;
+          const nextSet = new Set(prev);
+          nextSet.add(targetTab);
+          return nextSet;
         });
         setPageState(targetTab);
         setPageHistory((prev) =>
@@ -315,28 +317,19 @@ function AppContent() {
   // Wire the ref once auth is available
   setCurrentRenterDocRef.current = auth.setCurrentRenterDoc;
 
-  // ── Auto-logout / Session Timeout (15 mins inactivity or 10 mins background) ──
-  useSessionTimeout({
-    timeoutMs: 15 * 60 * 1000,
-    backgroundTimeoutMs: 10 * 60 * 1000,
-    enabled: Boolean(auth.token),
-    onTimeout: () => {
-      toast.warning("Session locked due to inactivity.", "Security Auto-Lock");
-      void auth.logout();
-    },
-  });
+  // Auto-refresh the active tab data silently in background when switching tabs
+  useEffect(() => {
+    if (auth.token && data.selectedHostelId) {
+      void data.refreshTab(page);
+    }
+  }, [page, auth.token, data.selectedHostelId, data.refreshTab]);
+
+
 
   // ── Biometrics layer (Hardware Fingerprint / Face ID lock) ─────────────────
   const biometrics = useBiometrics(Boolean(auth.token));
 
-  const [hasRemotePush, setHasRemotePush] = useState(false);
 
-  useNotificationSync(
-    data.notifications,
-    scheduleLocalNotification,
-    Boolean(auth.token),
-    hasRemotePush,
-  );
 
   // ── Room actions ────────────────────────────────────────────────────────────
   const rooms = useRoomActions({
@@ -368,12 +361,7 @@ function AppContent() {
     onRefresh: data.refreshAll,
   });
 
-  // ── Notification actions ────────────────────────────────────────────────────
-  const notifications = useNotificationActions({
-    selectedHostelId: data.selectedHostelId,
-    request: data.request,
-    onRefresh: data.refreshAll,
-  });
+
 
   // ── Repair actions ──────────────────────────────────────────────────────────
   const repairsHook = useRepairActions({
@@ -381,6 +369,43 @@ function AppContent() {
     request: data.request,
     onRefresh: data.refreshAll,
   });
+
+  // ── Notification actions & Push system ──────────────────────────────────────
+  const notificationsHook = useNotificationActions({
+    selectedHostelId: data.selectedHostelId,
+    request: data.request,
+    onRefresh: data.refreshAll,
+  });
+
+  const pushNotifications = useExpoPushNotifications((notifData) => {
+    if (notifData.type === "REPAIR" || notifData.entityType === "REPAIR") {
+      setPage("repairs");
+    } else if (notifData.type === "FEE_DUE" || notifData.type === "FEE_OVERDUE") {
+      setPage("payments");
+    } else {
+      setPage("notifications");
+    }
+  });
+
+  useNotificationSync(
+    data.notifications,
+    pushNotifications.scheduleLocalNotification,
+    Boolean(auth.token),
+  );
+
+  useEffect(() => {
+    if (!auth.token || !auth.currentUser) return;
+    pushNotifications.getExpoPushToken().then((token) => {
+      if (token) {
+        data.request("/notifications/push-token", {
+          method: "POST",
+          body: JSON.stringify({ token, platform: Platform.OS }),
+        }).catch(() => {
+          // Non-blocking in dev
+        });
+      }
+    });
+  }, [auth.token, auth.currentUser]);
 
   // ── Renter portal helpers ───────────────────────────────────────────────────
   async function handleRenterSubmitProof(params: {
@@ -492,30 +517,6 @@ function AppContent() {
     warmupApi();
   }, []);
 
-  useEffect(() => {
-    if (!auth.token) return;
-
-    void (async () => {
-      try {
-        const pushToken = await getExpoPushToken();
-        if (!pushToken) return;
-        const res = await fetch(`${API_URL}/notifications/push-token`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${auth.token}`,
-          },
-          body: JSON.stringify({ token: pushToken, pushToken, platform: Platform.OS }),
-        });
-        if (res.ok) {
-          setHasRemotePush(true);
-        }
-      } catch (err) {
-        // Retry on a future app start when the network is available.
-        console.warn("[PushToken] Registration network error:", err);
-      }
-    })();
-  }, [auth.token, getExpoPushToken]);
 
   useEffect(() => {
     if (!auth.token || !data.selectedHostelId) return;
@@ -609,8 +610,7 @@ function AppContent() {
   }, [data.payments]);
 
   const isDetailSubPage =
-    page === "payments" ||
-    page === "fees" ||
+    page === "hostels" ||
     page === "repairs" ||
     page === "notifications";
 
@@ -643,7 +643,7 @@ function AppContent() {
             letterSpacing: 0.5,
           }}
         >
-          StayNexa
+          HostelDesk
         </Text>
       </SafeAreaView>
     );
@@ -662,6 +662,7 @@ function AppContent() {
             backgroundColor: colors.background,
             justifyContent: "center",
             alignItems: "center",
+            paddingHorizontal: 24,
           },
         ]}
       >
@@ -673,14 +674,55 @@ function AppContent() {
         <Text
           style={{
             marginTop: 16,
-            color: colors.secondary,
-            fontSize: 14,
-            fontWeight: "600",
-            letterSpacing: 0.5,
+            color: colors.text,
+            fontSize: 16,
+            fontWeight: "700",
+            letterSpacing: 0.3,
           }}
         >
           Signing you in…
         </Text>
+        <Text
+          style={{
+            marginTop: 8,
+            color: colors.secondary,
+            fontSize: 13,
+            textAlign: "center",
+            lineHeight: 18,
+            maxWidth: 320,
+          }}
+        >
+          Connecting to cloud services. If this takes longer than a few moments, tap below to return to the login screen.
+        </Text>
+        {auth.error ? (
+          <Text
+            style={{
+              marginTop: 12,
+              color: colors.danger,
+              fontSize: 13,
+              fontWeight: "600",
+              textAlign: "center",
+            }}
+          >
+            {auth.error}
+          </Text>
+        ) : null}
+        <TouchableOpacity
+          style={{
+            marginTop: 20,
+            paddingVertical: 10,
+            paddingHorizontal: 20,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: colors.border,
+            backgroundColor: colors.card,
+          }}
+          onPress={() => void auth.logout()}
+        >
+          <Text style={{ fontSize: 13, color: colors.secondary, fontWeight: "600" }}>
+            Cancel & Return to Login
+          </Text>
+        </TouchableOpacity>
       </SafeAreaView>
     );
   }
@@ -791,7 +833,7 @@ function AppContent() {
           </View>
           <Text style={[styles.maintenanceTitle, { color: colors.text }]}>Platform Under Maintenance</Text>
           <Text style={[styles.maintenanceMessage, { color: colors.secondary }]}>
-            {platformStatus.maintenanceNotice || "StayNexa is currently undergoing scheduled platform upgrades. Services will resume shortly."}
+            {platformStatus.maintenanceNotice || "HostelDesk is currently undergoing scheduled platform upgrades. Services will resume shortly."}
           </Text>
           <TouchableOpacity
             style={[styles.maintenanceRefreshBtn, { backgroundColor: colors.text }]}
@@ -829,11 +871,12 @@ function AppContent() {
   // RENDER — renter portal
   // ─────────────────────────────────────────────────────────────────────────
   if (auth.currentUser?.role === "RENTER") {
+    const renterTopBg = isDark ? "#060B1E" : "#0A1333";
     return (
-      <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.card }]}>
+      <SafeAreaView style={[styles.safeArea, { backgroundColor: renterTopBg }]}>
         <StatusBar
-          barStyle={isDark ? "light-content" : "dark-content"}
-          backgroundColor={colors.card}
+          barStyle="light-content"
+          backgroundColor={renterTopBg}
         />
         {renderGlobalAlertBanner()}
         <RenterPortalScreen
@@ -859,7 +902,7 @@ function AppContent() {
           onLogout={() => void auth.logout()}
           onSubmitProof={handleRenterSubmitProof}
           onSubmitRepair={handleRenterSubmitRepair}
-          scheduleLocalNotification={scheduleLocalNotification}
+
           biometricLabel={biometrics.biometricTypeLabel}
           isBiometricsEnabled={biometrics.isBiometricsEnabled}
           isBiometricsSupported={biometrics.isHardwareAvailable && biometrics.isEnrolled}
@@ -969,426 +1012,435 @@ function AppContent() {
     (auth.currentUser?.role as any) === "WARDEN";
 
   if (isAdminRole) {
+    const isNavyHero = page !== "more";
+    const headerBg = isNavyHero ? (isDark ? "#060B1E" : "#0A1333") : colors.background;
+
     return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
-      <StatusBar
-        barStyle={isDark ? "light-content" : "dark-content"}
-        backgroundColor={colors.background}
-      />
-      {renderGlobalAlertBanner()}
-      <OfflineBanner onSyncPress={() => void flushOfflineQueue(data.request)} />
-      <View style={[styles.appContainer, { backgroundColor: colors.background }]}>
-        <View
-          style={[{ flex: 1 }, isDetailSubPage && { display: "none" }]}
-          onLayout={(e) => {
-            const w = e.nativeEvent.layout.width;
-            if (w > 0 && Math.abs(w - containerWidth) > 1) {
-              setContainerWidth(w);
-            }
-          }}
-        >
-          <ScrollView
-            ref={pageScrollRef}
-            horizontal
-            pagingEnabled
-            directionalLockEnabled
-            showsHorizontalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            onMomentumScrollEnd={onPageScrollEnd}
-            style={{ flex: 1 }}
-            contentContainerStyle={{ flexGrow: 1 }}
+      <SafeAreaView style={[styles.safeArea, { backgroundColor: headerBg }]}>
+        <StatusBar
+          barStyle={isNavyHero ? "light-content" : (isDark ? "light-content" : "dark-content")}
+          backgroundColor={headerBg}
+        />
+        {renderGlobalAlertBanner()}
+        <OfflineBanner onSyncPress={() => void flushOfflineQueue(data.request)} />
+        <View style={[styles.appContainer, { backgroundColor: colors.background }]}>
+          <View
+            style={[{ flex: 1 }, isDetailSubPage && { display: "none" }]}
+            onLayout={(e) => {
+              const w = e.nativeEvent.layout.width;
+              if (w > 0 && Math.abs(w - containerWidth) > 1) {
+                setContainerWidth(w);
+              }
+            }}
           >
-            {ADMIN_TABS.map((tabKey) => {
-              const isCurrent =
-                page === tabKey || (tabKey === "payments" && page === "fees");
-              const isVisited = visitedTabs.has(tabKey) || isCurrent;
+            <ScrollView
+              ref={pageScrollRef}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              overScrollMode="never"
+              bounces={false}
+              nestedScrollEnabled={true}
+              removeClippedSubviews={false}
+              scrollEventThrottle={16}
+              onScroll={onPageScroll}
+              onMomentumScrollEnd={onPageScrollEnd}
+              style={{ flex: 1 }}
+              contentContainerStyle={{ flexGrow: 1 }}
+            >
+              {ADMIN_TABS.map((tabKey) => {
+                const isTabMounted = mountedTabs.has(tabKey) || tabKey === page;
+                return (
+                  <View
+                    key={tabKey}
+                    style={{ width: containerWidth, flex: 1 }}
+                    collapsable={false}
+                  >
+                    {!isTabMounted ? (
+                      <View style={{ flex: 1, backgroundColor: colors.background }} />
+                    ) : (
+                      <>
+                        {tabKey === "dashboard" && (
+                          <DashboardScreen
+                            dashboard={data.dashboard}
+                            selectedHostel={data.selectedHostel}
+                            payments={data.payments}
+                            fees={data.fees}
+                            renters={data.renters}
+                            paymentProofStats={paymentProofStats}
+                            recentPayments={recentPayments}
+                            monthlyPaymentBars={monthlyPaymentBars}
+                            onRefresh={() => void data.refreshAll()}
+                            onNavigate={(targetPage) => {
+                              if (targetPage === "payments") {
+                                setPaymentsInitialOption("menu");
+                              }
+                              setPage(targetPage);
+                            }}
+                            onNavigateToExpenses={() => {
+                              setPaymentsInitialOption("expenses");
+                              setPage("payments");
+                            }}
+                          />
+                        )}
 
-              return (
-                <View
-                  key={tabKey}
-                  style={{ width: containerWidth, flex: 1 }}
-                  collapsable={false}
-                >
-                  {isVisited ? (
-                    <>
-                      {tabKey === "dashboard" && (
-                        <DashboardScreen
-                          dashboard={data.dashboard}
-                          selectedHostel={data.selectedHostel}
-                          payments={data.payments}
-                          fees={data.fees}
-                          renters={data.renters}
-                          paymentProofStats={paymentProofStats}
-                          recentPayments={recentPayments}
-                          monthlyPaymentBars={monthlyPaymentBars}
-                          onRefresh={() => void data.refreshAll()}
-                          onNavigate={(targetPage) => {
-                            if (targetPage === "payments") {
-                              setPaymentsInitialOption("menu");
+
+
+                        {tabKey === "rooms" && (
+                          <RoomsScreen
+                            rooms={data.rooms}
+                            renters={data.renters}
+                            selectedHostel={data.selectedHostel}
+                            showRoomModal={rooms.showRoomModal}
+                            setShowRoomModal={rooms.setShowRoomModal}
+                            roomNumber={rooms.roomNumber}
+                            setRoomNumber={rooms.setRoomNumber}
+                            roomFloor={rooms.roomFloor}
+                            setRoomFloor={rooms.setRoomFloor}
+                            roomCapacity={rooms.roomCapacity}
+                            setRoomCapacity={rooms.setRoomCapacity}
+                            roomSaving={rooms.roomSaving}
+                            onAddRoom={() => void rooms.addRoom()}
+                            onDeleteRoom={(room) => rooms.deleteRoom(room)}
+                            onRefresh={() => void data.refreshAll()}
+                            request={data.request}
+                            selectedHostelId={data.selectedHostelId}
+                          />
+                        )}
+
+                        {tabKey === "renters" && (
+                          <RentersScreen
+                            renters={data.renters}
+                            activeRenters={data.activeRenters}
+                            rooms={data.rooms}
+                            activeRooms={data.activeRooms}
+                            selectedHostel={data.selectedHostel}
+                            renterSearch={renterSearch}
+                            setRenterSearch={setRenterSearch}
+                            showRenterDetailsModal={renters.showRenterDetailsModal}
+                            setShowRenterDetailsModal={renters.setShowRenterDetailsModal}
+                            selectedRenter={renters.selectedRenter}
+                            renterDetailsLoading={renters.renterDetailsLoading}
+                            onOpenRenterDetails={(r) => void renters.openRenterDetails(r)}
+                            onOpenEditRenter={(r) => renters.openEditRenter(r)}
+                            onRemoveRenter={(r) => renters.removeRenter(r)}
+                            showRenterModal={renters.showRenterModal}
+                            setShowRenterModal={renters.setShowRenterModal}
+                            onOpenRenterModal={renters.openRenterModal}
+                            firstName={renters.firstName}
+                            setFirstName={renters.setFirstName}
+                            lastName={renters.lastName}
+                            setLastName={renters.setLastName}
+                            renterEmail={renters.renterEmail}
+                            setRenterEmail={renters.setRenterEmail}
+                            renterPhone={renters.renterPhone}
+                            setRenterPhone={renters.setRenterPhone}
+                            guardianName={renters.guardianName}
+                            setGuardianName={renters.setGuardianName}
+                            guardianPhone={renters.guardianPhone}
+                            setGuardianPhone={renters.setGuardianPhone}
+                            address={renters.address}
+                            setAddress={renters.setAddress}
+                            city={renters.city}
+                            setCity={renters.setCity}
+                            state={renters.state}
+                            setState={renters.setState}
+                            pincode={renters.pincode}
+                            setPincode={renters.setPincode}
+                            renterPassword={renters.renterPassword}
+                            setRenterPassword={renters.setRenterPassword}
+                            showRenterPassword={renters.showRenterPassword}
+                            setShowRenterPassword={renters.setShowRenterPassword}
+                            renterRoomId={renters.renterRoomId}
+                            setRenterRoomId={renters.setRenterRoomId}
+                            joiningDate={renters.joiningDate}
+                            setJoiningDate={renters.setJoiningDate}
+                            monthlyFee={renters.monthlyFee}
+                            setMonthlyFee={renters.setMonthlyFee}
+                            securityDeposit={renters.securityDeposit}
+                            setSecurityDeposit={renters.setSecurityDeposit}
+                            renterSaving={renters.renterSaving}
+                            onAddRenter={() => void renters.addRenter()}
+                            renterRoomPickerOpen={renters.renterRoomPickerOpen}
+                            setRenterRoomPickerOpen={renters.setRenterRoomPickerOpen}
+                            showEditRenterModal={renters.showEditRenterModal}
+                            setShowEditRenterModal={renters.setShowEditRenterModal}
+                            editingRenterId={renters.editingRenterId}
+                            editFirstName={renters.editFirstName}
+                            setEditFirstName={renters.setEditFirstName}
+                            editLastName={renters.editLastName}
+                            setEditLastName={renters.setEditLastName}
+                            editPhone={renters.editPhone}
+                            setEditPhone={renters.setEditPhone}
+                            editGuardianName={renters.editGuardianName}
+                            setEditGuardianName={renters.setEditGuardianName}
+                            editGuardianPhone={renters.editGuardianPhone}
+                            setEditGuardianPhone={renters.setEditGuardianPhone}
+                            editAddress={renters.editAddress}
+                            setEditAddress={renters.setEditAddress}
+                            editCity={renters.editCity}
+                            setEditCity={renters.setEditCity}
+                            editState={renters.editState}
+                            setEditState={renters.setEditState}
+                            editPincode={renters.editPincode}
+                            setEditPincode={renters.setEditPincode}
+                            editRenterRoomId={renters.editRenterRoomId}
+                            setEditRenterRoomId={renters.setEditRenterRoomId}
+                            editJoiningDate={renters.editJoiningDate}
+                            setEditJoiningDate={renters.setEditJoiningDate}
+                            editMonthlyFee={renters.editMonthlyFee}
+                            setEditMonthlyFee={renters.setEditMonthlyFee}
+                            editSecurityDeposit={renters.editSecurityDeposit}
+                            setEditSecurityDeposit={renters.setEditSecurityDeposit}
+                            editRenterStatus={renters.editRenterStatus}
+                            setEditRenterStatus={renters.setEditRenterStatus}
+                            editRenterSaving={renters.editRenterSaving}
+                            onUpdateRenter={() => void renters.updateRenter()}
+                            editRenterRoomPickerOpen={renters.editRenterRoomPickerOpen}
+                            setEditRenterRoomPickerOpen={renters.setEditRenterRoomPickerOpen}
+                            onRefresh={() => void data.refreshAll()}
+                          />
+                        )}
+
+                        {tabKey === "payments" && (
+                          <PaymentsScreen
+                            fees={data.fees}
+                            payments={data.payments}
+                            renters={data.renters}
+                            activeRenters={data.activeRenters}
+                            rooms={data.rooms}
+                            selectedHostel={data.selectedHostel}
+                            initialOption={paymentsInitialOption}
+                            showFeeModal={fees.showFeeModal}
+                            setShowFeeModal={fees.setShowFeeModal}
+                            feeRenterId={fees.feeRenterId}
+                            setFeeRenterId={fees.setFeeRenterId}
+                            feeMonth={fees.feeMonth}
+                            setFeeMonth={fees.setFeeMonth}
+                            feeAmount={fees.feeAmount}
+                            setFeeAmount={fees.setFeeAmount}
+                            feeDueDate={fees.feeDueDate}
+                            setFeeDueDate={fees.setFeeDueDate}
+                            feeDescription={fees.feeDescription}
+                            setFeeDescription={fees.setFeeDescription}
+                            feeSaving={fees.feeSaving}
+                            feeRenterPickerOpen={fees.feeRenterPickerOpen}
+                            setFeeRenterPickerOpen={fees.setFeeRenterPickerOpen}
+                            onOpenFeeModal={() => fees.openFeeModal()}
+                            onAddFee={() => void fees.addFee()}
+                            onDeleteFee={(feeId) => void fees.deleteFee(feeId)}
+                            onRemindFee={(feeId, renterName, customMessage) =>
+                              void notificationsHook.remindFee(feeId, renterName, customMessage)
                             }
-                            setPage(targetPage);
-                          }}
-                          onNavigateToExpenses={() => {
-                            setPaymentsInitialOption("expenses");
-                            setPage("payments");
-                          }}
-                        />
-                      )}
+                            onRemindAllUnpaid={() => void notificationsHook.remindAllUnpaid()}
+                            showGenerateModal={fees.showGenerateModal}
+                            setShowGenerateModal={fees.setShowGenerateModal}
+                            generateMonth={fees.generateMonth}
+                            setGenerateMonth={fees.setGenerateMonth}
+                            generateDueDate={fees.generateDueDate}
+                            setGenerateDueDate={fees.setGenerateDueDate}
+                            generateSaving={fees.generateSaving}
+                            onGenerateMonthlyFees={() => void fees.generateMonthlyFees()}
+                            onMarkOverdue={() => void fees.markOverdueFees()}
+                            paymentActionId={payments.paymentActionId}
+                            onReviewPayment={(id, status, hostelId) =>
+                              payments.reviewPayment(id, status, hostelId || data.selectedHostelId)
+                            }
+                            onDeletePayment={(id, hostelId) =>
+                              void payments.deletePayment(id, hostelId || data.selectedHostelId)
+                            }
+                            onRefresh={() => void data.refreshAll()}
+                            onBack={goBack}
+                            token={auth.token}
+                          />
+                        )}
 
-                      {tabKey === "hostels" && (
-                        <HostelsScreen
-                          hostels={data.hostels}
-                          selectedHostelId={data.selectedHostelId}
-                          onSelectHostel={(id) => {
-                            data.setSelectedHostelId(id);
-                            void data.refreshHostelData(id);
-                            setPage("dashboard");
-                          }}
-                          onRefresh={() => void data.refreshAll()}
-                          request={data.request}
-                        />
-                      )}
-
-                      {tabKey === "rooms" && (
-                        <RoomsScreen
-                          rooms={data.rooms}
-                          renters={data.renters}
-                          selectedHostel={data.selectedHostel}
-                          showRoomModal={rooms.showRoomModal}
-                          setShowRoomModal={rooms.setShowRoomModal}
-                          roomNumber={rooms.roomNumber}
-                          setRoomNumber={rooms.setRoomNumber}
-                          roomFloor={rooms.roomFloor}
-                          setRoomFloor={rooms.setRoomFloor}
-                          roomCapacity={rooms.roomCapacity}
-                          setRoomCapacity={rooms.setRoomCapacity}
-                          roomSaving={rooms.roomSaving}
-                          onAddRoom={() => void rooms.addRoom()}
-                          onDeleteRoom={(room) => rooms.deleteRoom(room)}
-                          onRefresh={() => void data.refreshAll()}
-                          request={data.request}
-                          selectedHostelId={data.selectedHostelId}
-                        />
-                      )}
-
-                      {tabKey === "renters" && (
-                        <RentersScreen
-                          renters={data.renters}
-                          activeRenters={data.activeRenters}
-                          rooms={data.rooms}
-                          activeRooms={data.activeRooms}
-                          selectedHostel={data.selectedHostel}
-                          renterSearch={renterSearch}
-                          setRenterSearch={setRenterSearch}
-                          showRenterDetailsModal={renters.showRenterDetailsModal}
-                          setShowRenterDetailsModal={renters.setShowRenterDetailsModal}
-                          selectedRenter={renters.selectedRenter}
-                          renterDetailsLoading={renters.renterDetailsLoading}
-                          onOpenRenterDetails={(r) => void renters.openRenterDetails(r)}
-                          onOpenEditRenter={(r) => renters.openEditRenter(r)}
-                          onRemoveRenter={(r) => renters.removeRenter(r)}
-                          showRenterModal={renters.showRenterModal}
-                          setShowRenterModal={renters.setShowRenterModal}
-                          onOpenRenterModal={renters.openRenterModal}
-                          firstName={renters.firstName}
-                          setFirstName={renters.setFirstName}
-                          lastName={renters.lastName}
-                          setLastName={renters.setLastName}
-                          renterEmail={renters.renterEmail}
-                          setRenterEmail={renters.setRenterEmail}
-                          renterPhone={renters.renterPhone}
-                          setRenterPhone={renters.setRenterPhone}
-                          guardianName={renters.guardianName}
-                          setGuardianName={renters.setGuardianName}
-                          guardianPhone={renters.guardianPhone}
-                          setGuardianPhone={renters.setGuardianPhone}
-                          address={renters.address}
-                          setAddress={renters.setAddress}
-                          city={renters.city}
-                          setCity={renters.setCity}
-                          state={renters.state}
-                          setState={renters.setState}
-                          pincode={renters.pincode}
-                          setPincode={renters.setPincode}
-                          renterPassword={renters.renterPassword}
-                          setRenterPassword={renters.setRenterPassword}
-                          showRenterPassword={renters.showRenterPassword}
-                          setShowRenterPassword={renters.setShowRenterPassword}
-                          renterRoomId={renters.renterRoomId}
-                          setRenterRoomId={renters.setRenterRoomId}
-                          joiningDate={renters.joiningDate}
-                          setJoiningDate={renters.setJoiningDate}
-                          monthlyFee={renters.monthlyFee}
-                          setMonthlyFee={renters.setMonthlyFee}
-                          securityDeposit={renters.securityDeposit}
-                          setSecurityDeposit={renters.setSecurityDeposit}
-                          renterSaving={renters.renterSaving}
-                          onAddRenter={() => void renters.addRenter()}
-                          renterRoomPickerOpen={renters.renterRoomPickerOpen}
-                          setRenterRoomPickerOpen={renters.setRenterRoomPickerOpen}
-                          showEditRenterModal={renters.showEditRenterModal}
-                          setShowEditRenterModal={renters.setShowEditRenterModal}
-                          editingRenterId={renters.editingRenterId}
-                          editFirstName={renters.editFirstName}
-                          setEditFirstName={renters.setEditFirstName}
-                          editLastName={renters.editLastName}
-                          setEditLastName={renters.setEditLastName}
-                          editPhone={renters.editPhone}
-                          setEditPhone={renters.setEditPhone}
-                          editGuardianName={renters.editGuardianName}
-                          setEditGuardianName={renters.setEditGuardianName}
-                          editGuardianPhone={renters.editGuardianPhone}
-                          setEditGuardianPhone={renters.setEditGuardianPhone}
-                          editAddress={renters.editAddress}
-                          setEditAddress={renters.setEditAddress}
-                          editCity={renters.editCity}
-                          setEditCity={renters.setEditCity}
-                          editState={renters.editState}
-                          setEditState={renters.setEditState}
-                          editPincode={renters.editPincode}
-                          setEditPincode={renters.setEditPincode}
-                          editRenterRoomId={renters.editRenterRoomId}
-                          setEditRenterRoomId={renters.setEditRenterRoomId}
-                          editJoiningDate={renters.editJoiningDate}
-                          setEditJoiningDate={renters.setEditJoiningDate}
-                          editMonthlyFee={renters.editMonthlyFee}
-                          setEditMonthlyFee={renters.setEditMonthlyFee}
-                          editSecurityDeposit={renters.editSecurityDeposit}
-                          setEditSecurityDeposit={renters.setEditSecurityDeposit}
-                          editRenterStatus={renters.editRenterStatus}
-                          setEditRenterStatus={renters.setEditRenterStatus}
-                          editRenterSaving={renters.editRenterSaving}
-                          onUpdateRenter={() => void renters.updateRenter()}
-                          editRenterRoomPickerOpen={renters.editRenterRoomPickerOpen}
-                          setEditRenterRoomPickerOpen={renters.setEditRenterRoomPickerOpen}
-                          onRefresh={() => void data.refreshAll()}
-                        />
-                      )}
-
-                      {tabKey === "more" && (
-                        <MoreScreen
-                          currentUser={auth.currentUser}
-                          token={auth.token}
-                          hostels={data.hostels}
-                          onRefreshHostels={() => void data.refreshAll()}
-                          onNavigateToFees={() => setPage("payments")}
-                          onNavigateToPayments={() => setPage("payments")}
-                          onNavigateToRepairs={() => setPage("repairs")}
-                          onNavigateToNotifications={() => setPage("notifications")}
-                          onNavigateToDashboard={() => setPage("dashboard")}
-                          onRefresh={() => void data.refreshAll()}
-                          onLogout={() => void auth.logout()}
-                          themeMode={themeMode}
-                          onToggleTheme={toggleTheme}
-                          biometricLabel={biometrics.biometricTypeLabel}
-                          isBiometricsEnabled={biometrics.isBiometricsEnabled}
-                          isBiometricsSupported={biometrics.isHardwareAvailable && biometrics.isEnrolled}
-                          onToggleBiometrics={biometrics.toggleBiometrics}
-                          onOpenAuditLogs={() => setShowAuditModal(true)}
-                        />
-                      )}
-                    </>
-                  ) : null}
-                </View>
-              );
-            })}
-          </ScrollView>
-        </View>
-
-        {isDetailSubPage && (
-          <View style={{ flex: 1 }}>
-            {(page === "payments" || page === "fees") && (
-              <PaymentsScreen
-                fees={data.fees}
-                payments={data.payments}
-                renters={data.renters}
-                activeRenters={data.activeRenters}
-                rooms={data.rooms}
-                selectedHostel={data.selectedHostel}
-                initialOption={paymentsInitialOption}
-                showFeeModal={fees.showFeeModal}
-                setShowFeeModal={fees.setShowFeeModal}
-                feeRenterId={fees.feeRenterId}
-                setFeeRenterId={fees.setFeeRenterId}
-                feeMonth={fees.feeMonth}
-                setFeeMonth={fees.setFeeMonth}
-                feeAmount={fees.feeAmount}
-                setFeeAmount={fees.setFeeAmount}
-                feeDueDate={fees.feeDueDate}
-                setFeeDueDate={fees.setFeeDueDate}
-                feeDescription={fees.feeDescription}
-                setFeeDescription={fees.setFeeDescription}
-                feeSaving={fees.feeSaving}
-                feeRenterPickerOpen={fees.feeRenterPickerOpen}
-                setFeeRenterPickerOpen={fees.setFeeRenterPickerOpen}
-                onOpenFeeModal={() => fees.openFeeModal()}
-                onAddFee={() => void fees.addFee()}
-                onDeleteFee={(feeId) => void fees.deleteFee(feeId)}
-                showGenerateModal={fees.showGenerateModal}
-                setShowGenerateModal={fees.setShowGenerateModal}
-                generateMonth={fees.generateMonth}
-                setGenerateMonth={fees.setGenerateMonth}
-                generateDueDate={fees.generateDueDate}
-                setGenerateDueDate={fees.setGenerateDueDate}
-                generateSaving={fees.generateSaving}
-                onGenerateMonthlyFees={() => void fees.generateMonthlyFees()}
-                onMarkOverdue={() => void fees.markOverdueFees()}
-                paymentActionId={payments.paymentActionId}
-                onReviewPayment={(id, status, hostelId) =>
-                  payments.reviewPayment(id, status, hostelId || data.selectedHostelId)
-                }
-                onDeletePayment={(id, hostelId) =>
-                  void payments.deletePayment(id, hostelId || data.selectedHostelId)
-                }
-                onRemindFee={(feeId, renterName, customMsg) =>
-                  void notifications.remindFee(feeId, renterName, customMsg)
-                }
-                onRemindAllUnpaid={() => notifications.remindAllUnpaid()}
-                onRefresh={() => void data.refreshAll()}
-                onBack={goBack}
-                token={auth.token}
-              />
-            )}
-
-            {page === "repairs" && (
-              <RepairsScreen
-                repairs={data.repairs}
-                renters={data.renters}
-                rooms={data.rooms}
-                selectedHostel={data.selectedHostel}
-                showStatusModal={repairsHook.showStatusModal}
-                setShowStatusModal={repairsHook.setShowStatusModal}
-                showCreateModal={repairsHook.showCreateModal}
-                setShowCreateModal={repairsHook.setShowCreateModal}
-                selectedRepair={repairsHook.selectedRepair}
-                repairStatus={repairsHook.repairStatus}
-                setRepairStatus={repairsHook.setRepairStatus}
-                adminNotes={repairsHook.adminNotes}
-                setAdminNotes={repairsHook.setAdminNotes}
-                repairSaving={repairsHook.repairSaving}
-                onOpenStatusModal={(r) => repairsHook.openStatusModal(r)}
-                onUpdateStatus={(id, status, notes) =>
-                  repairsHook.updateRepairStatus(id, status, notes)
-                }
-                newTitle={repairsHook.newTitle}
-                setNewTitle={repairsHook.setNewTitle}
-                newDescription={repairsHook.newDescription}
-                setNewDescription={repairsHook.setNewDescription}
-                newPriority={repairsHook.newPriority}
-                setNewPriority={repairsHook.setNewPriority}
-                newRenterId={repairsHook.newRenterId}
-                setNewRenterId={repairsHook.setNewRenterId}
-                newRoomId={repairsHook.newRoomId}
-                setNewRoomId={repairsHook.setNewRoomId}
-                repairPersons={repairsHook.repairPersons}
-                showAddPersonModal={repairsHook.showAddPersonModal}
-                setShowAddPersonModal={repairsHook.setShowAddPersonModal}
-                personSaving={repairsHook.personSaving}
-                onAddRepairPerson={repairsHook.addRepairPerson}
-                onUpdateRepairPerson={repairsHook.updateRepairPerson}
-                onRemoveRepairPerson={repairsHook.removeRepairPerson}
-                onLoadRepairPersons={repairsHook.loadRepairPersons}
-                maintenanceTasks={repairsHook.maintenanceTasks}
-                onAddMaintenanceTask={repairsHook.addMaintenanceTask}
-                onUpdateMaintenanceTaskStatus={repairsHook.updateMaintenanceTaskStatus}
-                onDeleteMaintenanceTask={repairsHook.deleteMaintenanceTask}
-                onLoadMaintenanceTasks={repairsHook.loadMaintenanceTasks}
-                maintenanceSaving={repairsHook.maintenanceSaving}
-                onAddRepair={() => repairsHook.addRepair()}
-                onDeleteRepair={(id, title) => void repairsHook.deleteRepair(id, title)}
-                onRefresh={() => void data.refreshAll()}
-                onBack={goBack}
-                isRepairPerson={false}
-              />
-            )}
-
-            {page === "notifications" && (
-              <NotificationsScreen
-                notifications={data.notifications}
-                selectedHostel={data.selectedHostel}
-                hostels={data.hostels}
-                onSendBroadcast={(title, message, type, scope) =>
-                  notifications.sendBroadcast(title, message, type, scope)
-                }
-                onDeleteNotification={(id) => void notifications.deleteNotification(id)}
-                onClearAll={() => void notifications.clearAllNotifications()}
-                onRefresh={() => void data.refreshAll()}
-                onBack={goBack}
-              />
-            )}
+                        {tabKey === "more" && (
+                          <MoreScreen
+                            currentUser={auth.currentUser}
+                            token={auth.token}
+                            hostels={data.hostels}
+                            onRefreshHostels={() => void data.refreshAll()}
+                            onNavigateToFees={() => setPage("payments")}
+                            onNavigateToPayments={() => setPage("payments")}
+                            onNavigateToRepairs={() => setPage("repairs")}
+                            onNavigateToDashboard={() => setPage("dashboard")}
+                            onNavigateToHostels={() => setPage("hostels")}
+                            onNavigateToNotifications={() => setPage("notifications")}
+                            onRefresh={() => void data.refreshAll()}
+                            onLogout={() => void auth.logout()}
+                            themeMode={themeMode}
+                            onToggleTheme={toggleTheme}
+                            biometricLabel={biometrics.biometricTypeLabel}
+                            isBiometricsEnabled={biometrics.isBiometricsEnabled}
+                            isBiometricsSupported={biometrics.isHardwareAvailable && biometrics.isEnrolled}
+                            onToggleBiometrics={biometrics.toggleBiometrics}
+                          />
+                        )}
+                      </>
+                    )}
+                  </View>
+                );
+              })}
+            </ScrollView>
           </View>
-        )}
 
-        {/* Bottom navigation */}
-        <View
-          style={[
-            styles.bottomNav,
-            {
-              borderTopColor: colors.border,
-              backgroundColor: colors.card,
-            },
-          ]}
-        >
-          <BottomTab
-            icon="home-outline"
-            activeIcon="home"
-            label="Home"
-            active={page === "dashboard"}
-            onPress={() => setPage("dashboard")}
-          />
-          <BottomTab
-            icon="business-outline"
-            activeIcon="business"
-            label="Hostels"
-            active={page === "hostels"}
-            onPress={() => setPage("hostels")}
-          />
-          <BottomTab
-            icon="bed-outline"
-            activeIcon="bed"
-            label="Rooms"
-            active={page === "rooms"}
-            onPress={() => setPage("rooms")}
-          />
-          <BottomTab
-            icon="people-outline"
-            activeIcon="people"
-            label="Renters"
-            active={page === "renters"}
-            onPress={() => setPage("renters")}
-          />
-          <BottomTab
-            icon="apps-outline"
-            activeIcon="apps"
-            label="More"
-            badge={pendingProofsCount > 0 ? pendingProofsCount : undefined}
-            active={
-              page === "more" ||
-              page === "fees" ||
-              page === "payments" ||
-              page === "repairs" ||
-              page === "notifications"
-            }
-            onPress={() => setPage("more")}
-          />
+          {isDetailSubPage && (
+            <View style={{ flex: 1 }}>
+              {page === "hostels" && (
+                <HostelsScreen
+                  hostels={data.hostels}
+                  selectedHostelId={data.selectedHostelId}
+                  onSelectHostel={(id) => {
+                    data.setSelectedHostelId(id);
+                    void data.refreshHostelData(id);
+                    setPage("dashboard");
+                  }}
+                  onRefresh={() => void data.refreshAll()}
+                  request={data.request}
+                  onBack={goBack}
+                />
+              )}
+
+              {page === "repairs" && (
+                <RepairsScreen
+                  repairs={data.repairs}
+                  renters={data.renters}
+                  rooms={data.rooms}
+                  selectedHostel={data.selectedHostel}
+                  showStatusModal={repairsHook.showStatusModal}
+                  setShowStatusModal={repairsHook.setShowStatusModal}
+                  showCreateModal={repairsHook.showCreateModal}
+                  setShowCreateModal={repairsHook.setShowCreateModal}
+                  selectedRepair={repairsHook.selectedRepair}
+                  repairStatus={repairsHook.repairStatus}
+                  setRepairStatus={repairsHook.setRepairStatus}
+                  adminNotes={repairsHook.adminNotes}
+                  setAdminNotes={repairsHook.setAdminNotes}
+                  repairSaving={repairsHook.repairSaving}
+                  onOpenStatusModal={(r) => repairsHook.openStatusModal(r)}
+                  onUpdateStatus={(id, status, notes) =>
+                    repairsHook.updateRepairStatus(id, status, notes)
+                  }
+                  newTitle={repairsHook.newTitle}
+                  setNewTitle={repairsHook.setNewTitle}
+                  newDescription={repairsHook.newDescription}
+                  setNewDescription={repairsHook.setNewDescription}
+                  newPriority={repairsHook.newPriority}
+                  setNewPriority={repairsHook.setNewPriority}
+                  newRenterId={repairsHook.newRenterId}
+                  setNewRenterId={repairsHook.setNewRenterId}
+                  newRoomId={repairsHook.newRoomId}
+                  setNewRoomId={repairsHook.setNewRoomId}
+                  repairPersons={repairsHook.repairPersons}
+                  showAddPersonModal={repairsHook.showAddPersonModal}
+                  setShowAddPersonModal={repairsHook.setShowAddPersonModal}
+                  personSaving={repairsHook.personSaving}
+                  onAddRepairPerson={repairsHook.addRepairPerson}
+                  onUpdateRepairPerson={repairsHook.updateRepairPerson}
+                  onRemoveRepairPerson={repairsHook.removeRepairPerson}
+                  onLoadRepairPersons={repairsHook.loadRepairPersons}
+                  maintenanceTasks={repairsHook.maintenanceTasks}
+                  onAddMaintenanceTask={repairsHook.addMaintenanceTask}
+                  onUpdateMaintenanceTaskStatus={repairsHook.updateMaintenanceTaskStatus}
+                  onDeleteMaintenanceTask={repairsHook.deleteMaintenanceTask}
+                  onLoadMaintenanceTasks={repairsHook.loadMaintenanceTasks}
+                  maintenanceSaving={repairsHook.maintenanceSaving}
+                  onAddRepair={() => repairsHook.addRepair()}
+                  onDeleteRepair={(id, title) => void repairsHook.deleteRepair(id, title)}
+                  onRefresh={() => void data.refreshAll()}
+                  onBack={goBack}
+                  isRepairPerson={false}
+                />
+              )}
+
+              {page === "notifications" && (
+                <NotificationsScreen
+                  notifications={data.notifications}
+                  selectedHostel={data.selectedHostel}
+                  hostels={data.hostels}
+                  onSendBroadcast={(title, message, type, scope) =>
+                    notificationsHook.sendBroadcast(title, message, type, scope)
+                  }
+                  onDeleteNotification={(id) => void notificationsHook.deleteNotification(id)}
+                  onClearAll={() => void notificationsHook.clearAllNotifications()}
+                  onRefresh={() => void data.refreshAll()}
+                  onBack={goBack}
+                />
+              )}
+
+            </View>
+          )}
+
+          {/* Bottom navigation */}
+          <View style={[styles.bottomNavWrap, { backgroundColor: colors.background }]}>
+            <View
+              style={[
+                styles.bottomNav,
+                {
+                  borderColor: colors.border,
+                  backgroundColor: colors.card,
+                  shadowColor: isDark ? "#000000" : "#1E1B4B",
+                  shadowOpacity: isDark ? 0.45 : 0.12,
+                },
+              ]}
+            >
+              <BottomTab
+                icon="home-outline"
+                activeIcon="home"
+                label="Home"
+                active={page === "dashboard"}
+                onPress={() => setPage("dashboard")}
+              />
+              <BottomTab
+                icon="bed-outline"
+                activeIcon="bed"
+                label="Rooms"
+                active={page === "rooms"}
+                onPress={() => setPage("rooms")}
+              />
+              <BottomTab
+                icon="people-outline"
+                activeIcon="people"
+                label="Renters"
+                active={page === "renters"}
+                onPress={() => setPage("renters")}
+              />
+              <BottomTab
+                icon="wallet-outline"
+                activeIcon="wallet"
+                label="Payments"
+                badge={pendingProofsCount > 0 ? pendingProofsCount : undefined}
+                active={page === "payments" || page === "fees"}
+                onPress={() => {
+                  setPaymentsInitialOption("menu");
+                  setPage("payments");
+                }}
+              />
+              <BottomTab
+                icon="apps-outline"
+                activeIcon="apps"
+                label="More"
+                active={
+                  page === "more" ||
+                  page === "hostels" ||
+                  page === "repairs"
+                }
+                onPress={() => setPage("more")}
+              />
+            </View>
+          </View>
         </View>
-      </View>
 
-      {data.dataLoading ? (
-        <View style={[styles.refreshOverlay, { backgroundColor: colors.card }]}>
-          <ActivityIndicator size="small" color={colors.primary} />
-          <Text style={[styles.refreshOverlayText, { color: colors.secondary }]}>Refreshing…</Text>
-        </View>
-      ) : null}
-
-      <AuditLogModal
-        visible={showAuditModal}
-        onClose={() => setShowAuditModal(false)}
-        hostelId={data.selectedHostelId || data.hostels[0]?.id || ""}
-        token={auth.token || ""}
-      />
-    </SafeAreaView>
-  );
+        {data.dataLoading ? (
+          <View style={[styles.refreshOverlay, { backgroundColor: colors.card }]}>
+            <ActivityIndicator size="small" color={colors.primary} />
+            <Text style={[styles.refreshOverlayText, { color: colors.secondary }]}>Refreshing…</Text>
+          </View>
+        ) : null}
+      </SafeAreaView>
+    );
   }
 
   // Fallback while auth role is resolving to prevent any admin UI flashes
@@ -1400,6 +1452,7 @@ function AppContent() {
           backgroundColor: colors.background,
           justifyContent: "center",
           alignItems: "center",
+          paddingHorizontal: 24,
         },
       ]}
     >
@@ -1419,6 +1472,22 @@ function AppContent() {
       >
         Signing you in…
       </Text>
+      <TouchableOpacity
+        style={{
+          marginTop: 20,
+          paddingVertical: 10,
+          paddingHorizontal: 20,
+          borderRadius: 12,
+          borderWidth: 1,
+          borderColor: colors.border,
+          backgroundColor: colors.card,
+        }}
+        onPress={() => void auth.logout()}
+      >
+        <Text style={{ fontSize: 13, color: colors.secondary, fontWeight: "600" }}>
+          Cancel & Return to Login
+        </Text>
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -1447,18 +1516,27 @@ export default function App() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1 },
   appContainer: { flex: 1 },
+  bottomNavWrap: {
+    paddingHorizontal: 14,
+    paddingTop: 6,
+    paddingBottom: Platform.OS === "ios" ? 2 : 10,
+  },
   bottomNav: {
-    minHeight: 72,
-    borderTopWidth: 1,
+    minHeight: 68,
+    borderRadius: 30,
+    borderWidth: StyleSheet.hairlineWidth * 2,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-around",
-    paddingBottom: Platform.OS === "ios" ? 8 : 4,
+    paddingHorizontal: 6,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 12,
   },
   refreshOverlay: {
     position: "absolute",
     right: 16,
-    bottom: 83,
+    bottom: 98,
     borderRadius: 99,
     paddingHorizontal: 12,
     paddingVertical: 8,

@@ -11,8 +11,8 @@ interface CachedAuth {
 }
 
 const authCache = new Map<string, CachedAuth>();
-const AUTH_CACHE_TTL_MS = 45 * 1000; // 45 seconds TTL
-const MAX_AUTH_CACHE_SIZE = 1000;
+const AUTH_CACHE_TTL_MS = 3 * 60 * 1000; // 3 minutes TTL (Firebase ID tokens last 1 hr)
+const MAX_AUTH_CACHE_SIZE = 10000; // Easily accommodates thousands of concurrent users
 
 export function invalidateAuthCache(userId?: string) {
   if (userId) {
@@ -36,27 +36,35 @@ export async function resolveAuthUserFromToken(token: string): Promise<{ authUse
   try {
     const firebaseUser = await firebaseAuth.verifyIdToken(token);
     let userDocument = null;
-    const snapshot = await db
-      .collection("users")
-      .where("firebaseUid", "==", firebaseUser.uid)
-      .limit(1)
-      .get();
 
-    if (!snapshot.empty) {
-      userDocument = snapshot.docs[0];
-    } else if (firebaseUser.email) {
-      const emailSnapshot = await db
+    // 1. Direct O(1) document lookup by UID (fastest path: ~15ms)
+    const directDoc = await db.collection("users").doc(firebaseUser.uid).get();
+    if (directDoc.exists) {
+      userDocument = directDoc;
+    } else {
+      // 2. Fallback query by firebaseUid
+      const snapshot = await db
         .collection("users")
-        .where("email", "==", firebaseUser.email.toLowerCase())
+        .where("firebaseUid", "==", firebaseUser.uid)
         .limit(1)
         .get();
 
-      if (!emailSnapshot.empty && emailSnapshot.docs[0]) {
-        userDocument = emailSnapshot.docs[0];
-        await userDocument.ref.update({
-          firebaseUid: firebaseUser.uid,
-          updatedAt: new Date().toISOString(),
-        });
+      if (!snapshot.empty) {
+        userDocument = snapshot.docs[0];
+      } else if (firebaseUser.email) {
+        const emailSnapshot = await db
+          .collection("users")
+          .where("email", "==", firebaseUser.email.toLowerCase())
+          .limit(1)
+          .get();
+
+        if (!emailSnapshot.empty && emailSnapshot.docs[0]) {
+          userDocument = emailSnapshot.docs[0];
+          await userDocument.ref.update({
+            firebaseUid: firebaseUser.uid,
+            updatedAt: new Date().toISOString(),
+          });
+        }
       }
     }
 

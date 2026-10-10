@@ -70,14 +70,6 @@ enum RepairStatus {
   CANCELLED
 }
 
-enum NotificationType {
-  FEE_DUE
-  FEE_OVERDUE
-  PAYMENT_RECORDED
-  REPAIR_CREATED
-  REPAIR_UPDATED
-  SYSTEM
-}
 
 model User {
   id                    String                @id @default(uuid())
@@ -105,7 +97,6 @@ model User {
   adminHistory          HostelAdminHistory[]  @relation("AdminHistory")
   renter                Renter?
   recordedPayments      Payment[]             @relation("PaymentRecorder")
-  notifications         Notification[]
   auditLogs             AuditLog[]             @relation("AuditActor")
   createdFees           Fee[]                 @relation("FeeCreator")
 
@@ -297,21 +288,6 @@ model RepairRequest {
 
   @@index([hostelId, status, createdAt])
   @@index([renterId, status, createdAt])
-}
-
-model Notification {
-  id          String             @id @default(uuid())
-  userId      String
-  type        NotificationType
-  title       String
-  message     String
-  metadata    Json?
-  readAt      DateTime?
-  createdAt   DateTime           @default(now())
-
-  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, readAt, createdAt])
 }
 
 model AuditLog {

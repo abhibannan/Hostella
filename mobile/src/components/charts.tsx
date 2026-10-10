@@ -283,7 +283,7 @@ export function OccupancyGauge({
 
       <Text style={[styles.gaugeDetails, { color: colors.secondary }]}>
         <Text style={{ fontWeight: "700", color: colors.text }}>{occupiedBeds}</Text> of{" "}
-        <Text style={{ fontWeight: "700", color: colors.text }}>{totalBeds}</Text> beds filled
+        <Text style={{ fontWeight: "700", color: colors.text }}>{totalBeds}</Text> occupied
       </Text>
     </View>
   );

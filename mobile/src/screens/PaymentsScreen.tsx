@@ -14,8 +14,10 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Alert,
+  Linking,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { COLORS } from "../constants/theme";
 import { Fee, Hostel, Payment, Renter, Room } from "../types";
 import { getName, getEmail, money, statusLabel, currentMonth } from "../utils/formatters";
@@ -26,6 +28,7 @@ import { API_URL } from "../services/api";
 import * as Clipboard from "expo-clipboard";
 import { haptic } from "../utils/haptics";
 import { SwipeableRow } from "../components/SwipeableRow";
+import { HostellaBrand } from "../components/HostellaBrand";
 
 interface PaymentsScreenProps {
   fees: Fee[];
@@ -79,6 +82,26 @@ interface PaymentsScreenProps {
   onRefresh: () => void;
   onBack?: () => void;
   initialOption?: "menu" | "fees_all" | "fees_paid" | "fees_unpaid" | "proofs" | "reminders" | "expenses";
+}
+
+export function getFullProofUrl(
+  proofUrl?: string | null,
+  proofUploadId?: string | null,
+): string | null {
+  if (proofUrl && typeof proofUrl === "string" && proofUrl.trim().length > 0) {
+    const trimmed = proofUrl.trim();
+    if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+      return trimmed;
+    }
+    if (trimmed.startsWith("/")) {
+      const serverBase = API_URL.replace(/\/api\/v1\/?$/, "");
+      return `${serverBase}${trimmed.startsWith("/api/v1") ? trimmed : `/api/v1${trimmed}`}`;
+    }
+  }
+  if (proofUploadId && typeof proofUploadId === "string" && proofUploadId.trim().length > 0) {
+    return `${API_URL}/uploads/${proofUploadId.trim()}/file`;
+  }
+  return null;
 }
 
 export function PaymentsScreen(props: PaymentsScreenProps) {
@@ -233,81 +256,133 @@ export function PaymentsScreen(props: PaymentsScreenProps) {
           />
         }
       >
-        {/* Navigation & Header */}
-        <View style={styles.topNavRow}>
-          {onBack && (
-            <TouchableOpacity
-              style={[styles.backButton, { backgroundColor: colors.card, borderColor: colors.border }]}
-              onPress={() => {
-                if (activeOption !== "menu") {
-                  setActiveOption("menu");
-                } else {
-                  onBack();
-                }
-              }}
-            >
-              <Ionicons name="arrow-back" size={20} color={colors.text} />
-            </TouchableOpacity>
+        {/* ── Deep Royal Navy Hero Banner (Matching Dashboard Theme) ── */}
+        <View style={styles.heroContainer}>
+          <LinearGradient
+            colors={isDark ? ["#060B1E", "#0B163B", "#132357"] : ["#0A1333", "#122566", "#1E3A8A"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0.35, y: 1 }}
+            style={styles.heroBannerGradient}
+          >
+            {/* Ambient Lighting Orbs */}
+            <View style={[styles.ambientOrb, { top: -30, right: -20, width: 160, height: 160, backgroundColor: "rgba(59, 130, 246, 0.22)" }]} />
+            <View style={[styles.ambientOrb, { top: 20, left: -40, width: 130, height: 130, backgroundColor: "rgba(139, 92, 246, 0.2)" }]} />
+
+            {/* Header Top Bar: Hostella Brand + Back Btn + Title + Property Badge + Menu Action */}
+            <View style={{ marginBottom: 8 }}>
+              <HostellaBrand variant="full" colorScheme="dark" size="small" style={{ alignSelf: "flex-start" }} />
+            </View>
+            <View style={styles.heroHeaderRow}>
+              {(onBack || activeOption !== "menu") ? (
+                <TouchableOpacity
+                  style={styles.heroBackBtn}
+                  onPress={() => {
+                    if (activeOption !== "menu") {
+                      setActiveOption("menu");
+                    } else if (onBack) {
+                      onBack();
+                    }
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="arrow-back" size={19} color="#FFFFFF" />
+                </TouchableOpacity>
+              ) : null}
+
+              <View style={{ flex: 1 }}>
+                <Text style={styles.heroTitle} numberOfLines={1}>
+                  {activeOption === "menu"
+                    ? "Payments & Billing"
+                    : activeOption === "fees_all"
+                    ? "Fees (All Records)"
+                    : activeOption === "fees_paid"
+                    ? "Paid People"
+                    : activeOption === "fees_unpaid"
+                    ? "Unpaid People"
+                    : activeOption === "proofs"
+                    ? "Receipt Photos"
+                    : activeOption === "expenses"
+                    ? "Expenses & Financials"
+                    : "Remind Option"}
+                </Text>
+                <View style={styles.heroPropertyBadge}>
+                  <View style={styles.activeDot} />
+                  <Text style={styles.heroPropertyText} numberOfLines={1}>
+                    {selectedHostel?.name || "Hostella Property"}
+                  </Text>
+                </View>
+              </View>
+
+              {activeOption !== "menu" ? (
+                <TouchableOpacity
+                  style={styles.heroMenuSwitchBtn}
+                  onPress={() => setActiveOption("menu")}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="grid-outline" size={14} color="#FFFFFF" />
+                  <Text style={styles.heroMenuSwitchText}>Hub</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
+            {/* Quick Stat Chips inside Hero */}
+            <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "rgba(255,255,255,0.14)", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12 }}>
+                <Ionicons name="receipt-outline" size={13} color="#FFFFFF" />
+                <Text style={{ fontSize: 11.5, fontWeight: "700", color: "#FFFFFF" }}>{fees.length} Bills</Text>
+              </View>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "rgba(16, 185, 129, 0.22)", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12 }}>
+                <Ionicons name="cash-outline" size={13} color="#34D399" />
+                <Text style={{ fontSize: 11.5, fontWeight: "700", color: "#34D399" }}>{payments.length} Payments</Text>
+              </View>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "rgba(245, 158, 11, 0.22)", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12 }}>
+                <Ionicons name="time-outline" size={13} color="#FBBF24" />
+                <Text style={{ fontSize: 11.5, fontWeight: "700", color: "#FBBF24" }}>{pendingProofsCount} Proofs</Text>
+              </View>
+            </View>
+          </LinearGradient>
+
+          {/* Floating Financial KPI Summary Bar */}
+          {activeOption !== "expenses" && (
+            <View style={styles.floatingKpiWrap}>
+              <View style={[styles.kpiContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <View style={styles.kpiItem}>
+                  <Text style={[styles.kpiLabel, { color: colors.secondary }]}>Received</Text>
+                  <Text style={[styles.kpiValue, { color: "#10B981" }]}>{money(totalCollected)}</Text>
+                </View>
+                <View style={[styles.kpiDivider, { backgroundColor: colors.border }]} />
+                <View style={styles.kpiItem}>
+                  <Text style={[styles.kpiLabel, { color: colors.secondary }]}>Pending Rent</Text>
+                  <Text style={[styles.kpiValue, { color: "#EF4444" }]}>{money(totalOutstanding)}</Text>
+                </View>
+                <View style={[styles.kpiDivider, { backgroundColor: colors.border }]} />
+                <View style={styles.kpiItem}>
+                  <Text style={[styles.kpiLabel, { color: colors.secondary }]}>Receipt Photos</Text>
+                  <Text style={[styles.kpiValue, { color: pendingProofsCount > 0 ? "#F59E0B" : colors.secondary }]}>
+                    {pendingProofsCount}
+                  </Text>
+                </View>
+              </View>
+            </View>
           )}
-          <View style={{ flex: 1 }}>
-            <Header
-              title={
-                activeOption === "menu"
-                  ? "Payments & Invoicing"
-                  : activeOption === "fees_all"
-                  ? "Fees (All Records)"
-                  : activeOption === "fees_paid"
-                  ? "Paid People"
-                  : activeOption === "fees_unpaid"
-                  ? "Unpaid People"
-                  : activeOption === "proofs"
-                  ? "Payment Receipts"
-                  : activeOption === "expenses"
-                  ? "Expenses & Financials"
-                  : "Remind Option"
-              }
-              subtitle={selectedHostel?.name || "Financial Management"}
-              onRefresh={onRefresh}
-            />
-          </View>
         </View>
 
-        {/* Financial KPI Summary Bar */}
-        {activeOption !== "expenses" && (
-          <View style={[styles.kpiContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <View style={styles.kpiItem}>
-              <Text style={[styles.kpiLabel, { color: colors.secondary }]}>Collected</Text>
-              <Text style={[styles.kpiValue, { color: COLORS.success }]}>{money(totalCollected)}</Text>
-            </View>
-            <View style={[styles.kpiDivider, { backgroundColor: colors.border }]} />
-            <View style={styles.kpiItem}>
-              <Text style={[styles.kpiLabel, { color: colors.secondary }]}>Outstanding</Text>
-              <Text style={[styles.kpiValue, { color: COLORS.danger }]}>{money(totalOutstanding)}</Text>
-            </View>
-            <View style={[styles.kpiDivider, { backgroundColor: colors.border }]} />
-            <View style={styles.kpiItem}>
-              <Text style={[styles.kpiLabel, { color: colors.secondary }]}>Proof Reviews</Text>
-              <Text style={[styles.kpiValue, { color: pendingProofsCount > 0 ? COLORS.warning : colors.secondary }]}>
-                {pendingProofsCount}
-              </Text>
-            </View>
-          </View>
-        )}
+        <View style={styles.mainPaymentsBody}>
 
         {/* ── Payments Menu Hub (When in Menu Mode) ── */}
         {activeOption === "menu" ? (
           <View style={styles.menuContainer}>
             <View style={styles.menuHeaderRow}>
               <View>
-                <Text style={[styles.menuHeaderTitle, { color: colors.text }]}>PAYMENTS & BILLING MENU</Text>
-                <Text style={[styles.menuHeaderSub, { color: colors.secondary }]}>Select an option or action below</Text>
+                <Text style={[styles.menuHeaderTitle, { color: colors.text }]}>CHOOSE AN ACTION</Text>
+                <Text style={[styles.menuHeaderSub, { color: colors.secondary }]}>Tap below to view bills, payments, or costs</Text>
               </View>
             </View>
 
-            <View style={styles.menuCardsList}>
-              {/* Option 1: Fees (All Records) */}
+            <View style={styles.menuGridContainer}>
+              {/* Option 1: All Bills */}
               <TouchableOpacity
-                style={[styles.menuCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                style={[styles.menuGridItem, { backgroundColor: colors.card, borderColor: colors.border }]}
                 onPress={() => {
                   haptic.cardPress();
                   setFeeFilter("all");
@@ -315,21 +390,16 @@ export function PaymentsScreen(props: PaymentsScreenProps) {
                 }}
                 activeOpacity={0.75}
               >
-                <View style={[styles.menuIconContainer, { backgroundColor: isDark ? "rgba(59,130,246,0.18)" : COLORS.primaryLight }]}>
-                  <Ionicons name="receipt-outline" size={22} color={COLORS.primary} />
+                <View style={[styles.menuGridIcon, { backgroundColor: isDark ? "rgba(59,130,246,0.18)" : COLORS.primaryLight }]}>
+                  <Ionicons name="receipt-outline" size={24} color={COLORS.primary} />
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.menuCardTitle, { color: colors.text }]}>Fees (All Records)</Text>
-                </View>
-                <View style={[styles.menuCounterBadge, { backgroundColor: isDark ? colors.surfaceSecondary : COLORS.grayFill }]}>
-                  <Text style={[styles.menuCounterBadgeText, { color: colors.text }]}>{fees.length}</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={colors.secondary} />
+                <Text style={[styles.menuGridTitle, { color: colors.text }]} numberOfLines={1}>All Bills</Text>
+                <Text style={[styles.menuGridSub, { color: colors.secondary }]}>{fees.length} Total</Text>
               </TouchableOpacity>
 
-              {/* Option 2: Paid People */}
+              {/* Option 2: Paid Rent */}
               <TouchableOpacity
-                style={[styles.menuCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                style={[styles.menuGridItem, { backgroundColor: colors.card, borderColor: colors.border }]}
                 onPress={() => {
                   haptic.cardPress();
                   setFeeFilter("paid");
@@ -337,21 +407,16 @@ export function PaymentsScreen(props: PaymentsScreenProps) {
                 }}
                 activeOpacity={0.75}
               >
-                <View style={[styles.menuIconContainer, { backgroundColor: isDark ? "rgba(16,185,129,0.18)" : COLORS.successLight }]}>
-                  <Ionicons name="checkmark-circle-outline" size={22} color={COLORS.success} />
+                <View style={[styles.menuGridIcon, { backgroundColor: isDark ? "rgba(16,185,129,0.18)" : COLORS.successLight }]}>
+                  <Ionicons name="checkmark-circle-outline" size={24} color={COLORS.success} />
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.menuCardTitle, { color: colors.text }]}>Paid People</Text>
-                </View>
-                <View style={[styles.menuCounterBadge, { backgroundColor: isDark ? "rgba(16,185,129,0.2)" : COLORS.successLight }]}>
-                  <Text style={[styles.menuCounterBadgeText, { color: COLORS.success }]}>{paidFees.length} Paid</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={colors.secondary} />
+                <Text style={[styles.menuGridTitle, { color: colors.text }]} numberOfLines={1}>Paid Rent</Text>
+                <Text style={[styles.menuGridSub, { color: colors.secondary }]}>{paidFees.length} Paid</Text>
               </TouchableOpacity>
 
-              {/* Option 3: Unpaid People */}
+              {/* Option 3: Pending Rent */}
               <TouchableOpacity
-                style={[styles.menuCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                style={[styles.menuGridItem, { backgroundColor: colors.card, borderColor: colors.border }]}
                 onPress={() => {
                   haptic.cardPress();
                   setFeeFilter("unpaid");
@@ -359,127 +424,102 @@ export function PaymentsScreen(props: PaymentsScreenProps) {
                 }}
                 activeOpacity={0.75}
               >
-                <View style={[styles.menuIconContainer, { backgroundColor: isDark ? "rgba(239,68,68,0.18)" : COLORS.dangerLight }]}>
-                  <Ionicons name="alert-circle-outline" size={22} color={COLORS.danger} />
+                <View style={[styles.menuGridIcon, { backgroundColor: isDark ? "rgba(239,68,68,0.18)" : COLORS.dangerLight }]}>
+                  <Ionicons name="alert-circle-outline" size={24} color={COLORS.danger} />
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.menuCardTitle, { color: colors.text }]}>Unpaid People</Text>
-                </View>
-                <View style={[styles.menuCounterBadge, { backgroundColor: isDark ? "rgba(239,68,68,0.2)" : COLORS.dangerLight }]}>
-                  <Text style={[styles.menuCounterBadgeText, { color: COLORS.danger }]}>{unpaidFees.length} Due</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={colors.secondary} />
+                <Text style={[styles.menuGridTitle, { color: colors.text }]} numberOfLines={1}>Unpaid People</Text>
+                <Text style={[styles.menuGridSub, { color: colors.secondary }]}>{unpaidFees.length} Due</Text>
               </TouchableOpacity>
 
-              {/* Option 4: Payment Receipts (Proofs) */}
+              {/* Option 4: Receipt Photos */}
               <TouchableOpacity
-                style={[styles.menuCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                style={[styles.menuGridItem, { backgroundColor: colors.card, borderColor: colors.border }]}
                 onPress={() => {
                   haptic.cardPress();
                   setActiveOption("proofs");
                 }}
                 activeOpacity={0.75}
               >
-                <View style={[styles.menuIconContainer, { backgroundColor: isDark ? "rgba(245,158,11,0.18)" : COLORS.warningLight }]}>
-                  <Ionicons name="images-outline" size={22} color={COLORS.warning} />
+                <View style={[styles.menuGridIcon, { backgroundColor: isDark ? "rgba(245,158,11,0.18)" : COLORS.warningLight }]}>
+                  <Ionicons name="images-outline" size={24} color={COLORS.warning} />
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.menuCardTitle, { color: colors.text }]}>Payment Receipts (Proofs)</Text>
-                </View>
-                {pendingProofsCount > 0 && (
-                  <View style={[styles.menuCounterBadge, { backgroundColor: isDark ? "rgba(245,158,11,0.25)" : COLORS.warningLight }]}>
-                    <Text style={[styles.menuCounterBadgeText, { color: COLORS.warning }]}>{pendingProofsCount} Pending</Text>
-                  </View>
-                )}
-                <Ionicons name="chevron-forward" size={18} color={colors.secondary} />
+                <Text style={[styles.menuGridTitle, { color: colors.text }]} numberOfLines={1}>Receipt Photos</Text>
+                <Text style={[styles.menuGridSub, { color: colors.secondary }]}>{pendingProofsCount > 0 ? `${pendingProofsCount} New` : "View photos"}</Text>
               </TouchableOpacity>
 
-              {/* Option 5: Remind Option */}
+              {/* Option 5: Reminders */}
               <TouchableOpacity
-                style={[styles.menuCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                style={[styles.menuGridItem, { backgroundColor: colors.card, borderColor: colors.border }]}
                 onPress={() => {
                   haptic.cardPress();
                   setActiveOption("reminders");
                 }}
                 activeOpacity={0.75}
               >
-                <View style={[styles.menuIconContainer, { backgroundColor: isDark ? "rgba(139,92,246,0.18)" : COLORS.purpleLight }]}>
-                  <Ionicons name="notifications-outline" size={22} color={COLORS.purple} />
+                <View style={[styles.menuGridIcon, { backgroundColor: isDark ? "rgba(139,92,246,0.18)" : COLORS.purpleLight }]}>
+                  <Ionicons name="notifications-outline" size={24} color={COLORS.purple} />
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.menuCardTitle, { color: colors.text }]}>Remind Option</Text>
-                </View>
-                <View style={[styles.menuCounterBadge, { backgroundColor: isDark ? "rgba(139,92,246,0.2)" : COLORS.purpleLight }]}>
-                  <Text style={[styles.menuCounterBadgeText, { color: COLORS.purple }]}>{unpaidFees.length} To Remind</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={colors.secondary} />
+                <Text style={[styles.menuGridTitle, { color: colors.text }]} numberOfLines={1}>Reminders</Text>
+                <Text style={[styles.menuGridSub, { color: colors.secondary }]}>{unpaidFees.length} To remind</Text>
               </TouchableOpacity>
 
-              {/* Option 6: Expenses & Net Profit Tracker */}
+              {/* Option 6: Expenses & Bills */}
               <TouchableOpacity
-                style={[styles.menuCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                style={[styles.menuGridItem, { backgroundColor: colors.card, borderColor: colors.border }]}
                 onPress={() => {
                   haptic.cardPress();
                   setActiveOption("expenses");
                 }}
                 activeOpacity={0.75}
               >
-                <View style={[styles.menuIconContainer, { backgroundColor: isDark ? "rgba(245,158,11,0.18)" : "rgba(245, 158, 11, 0.12)" }]}>
-                  <Ionicons name="analytics-outline" size={22} color="#F59E0B" />
+                <View style={[styles.menuGridIcon, { backgroundColor: isDark ? "rgba(245,158,11,0.18)" : "rgba(245, 158, 11, 0.12)" }]}>
+                  <Ionicons name="analytics-outline" size={24} color="#F59E0B" />
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.menuCardTitle, { color: colors.text }]}>Expenses & Financial Tracker</Text>
-                  <Text style={{ fontSize: 11, color: colors.secondary, marginTop: 2 }}>
-                    Electricity, water, salaries & PDF statement export
-                  </Text>
-                </View>
-                <View style={[styles.menuCounterBadge, { backgroundColor: isDark ? "rgba(245,158,11,0.2)" : "rgba(245, 158, 11, 0.12)" }]}>
-                  <Text style={[styles.menuCounterBadgeText, { color: "#F59E0B" }]}>P&L Ledger</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={colors.secondary} />
+                <Text style={[styles.menuGridTitle, { color: colors.text }]} numberOfLines={1}>Expenses</Text>
+                <Text style={[styles.menuGridSub, { color: colors.secondary }]}>Bills & Profit</Text>
               </TouchableOpacity>
+            </View>
 
-              {/* Quick Actions Header */}
-              <Text style={[styles.menuSectionDividerText, { color: colors.secondary }]}>FINANCIAL ACTIONS</Text>
+            {/* Quick Actions Header */}
+            <Text style={[styles.menuSectionDividerText, { color: colors.secondary }]}>QUICK SHORTCUTS</Text>
 
-              {/* Action: Auto-Generate */}
-              {onGenerateMonthlyFees && (
-                <TouchableOpacity
-                  style={[styles.menuActionCard, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}
-                  onPress={() => {
-                    haptic.medium();
-                    setShowGenerateModal?.(true);
-                  }}
-                  activeOpacity={0.75}
-                >
-                  <View style={[styles.menuActionIconBox, { backgroundColor: COLORS.primaryLight }]}>
-                    <Ionicons name="flash" size={18} color={COLORS.primary} />
-                  </View>
-                  <View style={{ flex: 1, marginLeft: 12 }}>
-                    <Text style={[styles.menuActionTitle, { color: colors.text }]}>Auto-Generate Monthly Fees</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={18} color={colors.secondary} />
-                </TouchableOpacity>
-              )}
-
-              {/* Action: Create Custom Fee */}
+            {/* Action: Auto-Generate */}
+            {onGenerateMonthlyFees && (
               <TouchableOpacity
                 style={[styles.menuActionCard, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}
                 onPress={() => {
                   haptic.medium();
-                  onOpenFeeModal();
+                  setShowGenerateModal?.(true);
                 }}
                 activeOpacity={0.75}
               >
-                <View style={[styles.menuActionIconBox, { backgroundColor: COLORS.successLight }]}>
-                  <Ionicons name="add" size={18} color={COLORS.success} />
+                <View style={[styles.menuActionIconBox, { backgroundColor: COLORS.primaryLight }]}>
+                  <Ionicons name="flash" size={18} color={COLORS.primary} />
                 </View>
                 <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={[styles.menuActionTitle, { color: colors.text }]}>Create Custom Fee</Text>
+                  <Text style={[styles.menuActionTitle, { color: colors.text }]}>Auto-Bill Monthly Rent</Text>
                 </View>
                 <Ionicons name="chevron-forward" size={18} color={colors.secondary} />
               </TouchableOpacity>
-            </View>
+            )}
+
+            {/* Action: Create Custom Fee */}
+            <TouchableOpacity
+              style={[styles.menuActionCard, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}
+              onPress={() => {
+                haptic.medium();
+                onOpenFeeModal();
+              }}
+              activeOpacity={0.75}
+            >
+              <View style={[styles.menuActionIconBox, { backgroundColor: COLORS.successLight }]}>
+                <Ionicons name="add" size={18} color={COLORS.success} />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={[styles.menuActionTitle, { color: colors.text }]}>Add Single Bill</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.secondary} />
+            </TouchableOpacity>
           </View>
         ) : (
           /* ── In-Section Top Navigation Bar (When an option is open) ── */
@@ -616,6 +656,39 @@ export function PaymentsScreen(props: PaymentsScreenProps) {
               </View>
             </View>
 
+            {/* Top of Unpaid Section: Remind All Banner */}
+            {(feeFilter === "unpaid" || activeOption === "fees_unpaid") && unpaidFees.length > 0 && (
+              <View style={[styles.remindBanner, { backgroundColor: colors.card, borderColor: isDark ? "#78350F" : "#FDE68A", marginTop: 4, marginBottom: 14 }]}>
+                <View style={styles.remindBannerLeft}>
+                  <View style={styles.bellIconWrap}>
+                    <Ionicons name="notifications" size={20} color="#FFFFFF" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.remindBannerTitle, { color: colors.text }]}>
+                      {unpaidFees.length} Resident{unpaidFees.length === 1 ? "" : "s"} With Pending Dues
+                    </Text>
+                    <Text style={[styles.remindBannerSub, { color: colors.secondary }]}>
+                      Total outstanding: ₹{totalOutstanding}. Send rent due reminder alerts to all unpaid residents.
+                    </Text>
+                  </View>
+                </View>
+
+                {onRemindAllUnpaid && (
+                  <TouchableOpacity
+                    style={styles.remindAllBannerBtn}
+                    onPress={() => {
+                      haptic.medium();
+                      onRemindAllUnpaid();
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="paper-plane" size={14} color="#FFFFFF" />
+                    <Text style={styles.remindAllBannerBtnText}>Remind All Unpaid ({unpaidFees.length})</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+
             {/* Fee Cards List */}
             {displayedFees.length === 0 ? (
               <EmptyState
@@ -680,13 +753,16 @@ export function PaymentsScreen(props: PaymentsScreenProps) {
                     {/* Attached Payment Proof Receipt (if submitted) */}
                     {(() => {
                       const feePayment = payments.find(
-                        (p) => p.feeId === fee.id && (p.proofUrl || p.proofUploadId),
+                        (p) =>
+                          (p.feeId === fee.id ||
+                            (p.renterId === fee.renterId && Number(p.amount) === Number(fee.paidAmount)) ||
+                            (p.renterId === fee.renterId && Math.abs(Number(p.amount) - Number(fee.amount)) < 1)) &&
+                          (p.proofUrl || p.proofUploadId),
                       );
-                      const currentProofUrl =
-                        feePayment?.proofUrl ||
-                        (feePayment?.proofUploadId
-                          ? `${API_URL}/uploads/${feePayment.proofUploadId}/file`
-                          : null);
+                      const currentProofUrl = getFullProofUrl(
+                        feePayment?.proofUrl,
+                        feePayment?.proofUploadId,
+                      );
 
                       if (!currentProofUrl) return null;
 
@@ -774,18 +850,56 @@ export function PaymentsScreen(props: PaymentsScreenProps) {
                         {(fee as any).isArchivedRenter ? "Historical Record" : isPaid ? "Settled in full" : `₹${remaining} balance due`}
                       </Text>
 
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                        {remaining > 0 && onRemindFee ? (
-                          <TouchableOpacity
-                            style={[styles.remindBtn, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}
-                            onPress={() => {
-                              haptic.light();
-                              openCustomReminder(fee, renterTitle);
-                            }}
-                          >
-                            <Ionicons name="notifications-outline" size={13} color={colors.primary} />
-                            <Text style={[styles.remindBtnText, { color: colors.primary }]}>Remind</Text>
-                          </TouchableOpacity>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+                        {remaining > 0 ? (
+                          <>
+                            <TouchableOpacity
+                              style={[styles.remindBtn, { backgroundColor: isDark ? "rgba(239,68,68,0.15)" : COLORS.dangerLight, borderColor: isDark ? "rgba(239,68,68,0.3)" : "#FECACA" }]}
+                              onPress={() => {
+                                haptic.light();
+                                if (onRemindFee) {
+                                  onRemindFee(fee.id, renterTitle);
+                                } else {
+                                  openCustomReminder(fee, renterTitle);
+                                }
+                              }}
+                            >
+                              <Ionicons name="notifications" size={13} color={COLORS.danger} />
+                              <Text style={[styles.remindBtnText, { color: COLORS.danger, fontWeight: "700" }]}>Remind</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                              style={[styles.remindBtn, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}
+                              onPress={() => {
+                                haptic.light();
+                                openCustomReminder(fee, renterTitle);
+                              }}
+                            >
+                              <Ionicons name="create-outline" size={13} color={colors.primary} />
+                              <Text style={[styles.remindBtnText, { color: colors.primary }]}>Customize</Text>
+                            </TouchableOpacity>
+
+                            {(() => {
+                              const renterPhone = renter?.phone || renter?.user?.phone;
+                              if (!renterPhone) return null;
+                              return (
+                                <TouchableOpacity
+                                  style={[styles.remindBtn, { backgroundColor: isDark ? "rgba(37,211,102,0.14)" : "#E8F8EE", borderColor: isDark ? "rgba(37,211,102,0.3)" : "#BBF7D0" }]}
+                                  onPress={() => {
+                                    haptic.light();
+                                    const msg = `Hi ${renterTitle}, this is a payment reminder from ${selectedHostel?.name || "Hostel Management"}. Your pending fee of ₹${remaining} for ${fee.month} is due (Due: ${fee.dueDate || "N/A"}). Please clear your dues promptly.`;
+                                    const cleanPhone = renterPhone.replace(/\D/g, "");
+                                    Linking.openURL(`whatsapp://send?phone=${cleanPhone}&text=${encodeURIComponent(msg)}`).catch(() => {
+                                      Linking.openURL(`sms:${cleanPhone}?body=${encodeURIComponent(msg)}`);
+                                    });
+                                  }}
+                                >
+                                  <Ionicons name="logo-whatsapp" size={13} color="#16A34A" />
+                                  <Text style={[styles.remindBtnText, { color: "#16A34A", fontWeight: "700" }]}>WhatsApp</Text>
+                                </TouchableOpacity>
+                              );
+                            })()}
+                          </>
                         ) : null}
 
                         {onDeleteFee ? (
@@ -933,11 +1047,10 @@ export function PaymentsScreen(props: PaymentsScreenProps) {
 
                     {/* Screenshot Preview */}
                     {(() => {
-                      const proofImageSource =
-                        payment.proofUrl ||
-                        (payment.proofUploadId
-                          ? `${API_URL}/uploads/${payment.proofUploadId}/file`
-                          : null);
+                      const proofImageSource = getFullProofUrl(
+                        payment.proofUrl,
+                        payment.proofUploadId,
+                      );
 
                       return proofImageSource ? (
                         <TouchableOpacity
@@ -1005,9 +1118,10 @@ export function PaymentsScreen(props: PaymentsScreenProps) {
                         <TouchableOpacity
                           style={[styles.reviewBtn, styles.approveBtn, { backgroundColor: colors.primary }]}
                           disabled={paymentActionId === payment.id}
-                          onPress={() => {
+                          onPress={async () => {
                             haptic.success();
-                            onReviewPayment(payment.id, "APPROVED", payment.hostelId || selectedHostel?.id);
+                            await onReviewPayment(payment.id, "APPROVED", payment.hostelId || selectedHostel?.id);
+                            setProofFilter("all");
                           }}
                         >
                           {paymentActionId === payment.id ? (
@@ -1033,12 +1147,14 @@ export function PaymentsScreen(props: PaymentsScreenProps) {
                           label: "Approve",
                           icon: "checkmark-circle-outline",
                           backgroundColor: "#10B981",
-                          onPress: () =>
-                            onReviewPayment(
+                          onPress: async () => {
+                            await onReviewPayment(
                               payment.id,
                               "APPROVED",
                               payment.hostelId || selectedHostel?.id
-                            ),
+                            );
+                            setProofFilter("all");
+                          },
                         },
                       ]}
                       rightActions={[
@@ -1177,6 +1293,33 @@ export function PaymentsScreen(props: PaymentsScreenProps) {
                         <Ionicons name="notifications" size={14} color="#FFFFFF" />
                         <Text style={styles.sendDirectRemindBtnText}>Send Reminder</Text>
                       </TouchableOpacity>
+
+                      {(() => {
+                        const rPhone = renter?.phone || renter?.user?.phone;
+                        if (!rPhone) return null;
+                        return (
+                          <TouchableOpacity
+                            style={[
+                              styles.customMessageBtn,
+                              {
+                                backgroundColor: isDark ? "rgba(37,211,102,0.16)" : "#E8F8EE",
+                                borderColor: isDark ? "rgba(37,211,102,0.3)" : "#BBF7D0",
+                              },
+                            ]}
+                            onPress={() => {
+                              haptic.light();
+                              const msg = `Hi ${renterName}, this is a payment reminder from ${selectedHostel?.name || "Hostel"}. Your fee of ₹${remaining} for ${fee.month} is pending. Due date: ${fee.dueDate || "promptly"}. Please clear your payment at your earliest convenience.`;
+                              const cleanPhone = rPhone.replace(/\D/g, "");
+                              Linking.openURL(`whatsapp://send?phone=${cleanPhone}&text=${encodeURIComponent(msg)}`).catch(() => {
+                                Linking.openURL(`sms:${cleanPhone}?body=${encodeURIComponent(msg)}`);
+                              });
+                            }}
+                          >
+                            <Ionicons name="logo-whatsapp" size={14} color="#16A34A" />
+                            <Text style={[styles.customMessageBtnText, { color: "#16A34A", fontWeight: "700" }]}>WhatsApp</Text>
+                          </TouchableOpacity>
+                        );
+                      })()}
                     </View>
                   </View>
                 );
@@ -1198,6 +1341,7 @@ export function PaymentsScreen(props: PaymentsScreenProps) {
             onBack={() => setActiveOption("menu")}
           />
         )}
+        </View>
       </ScrollView>
 
       {/* ─────────────────────────────────────────────────────────────
@@ -1699,8 +1843,64 @@ export function PaymentsScreen(props: PaymentsScreenProps) {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: COLORS.background },
-  screenContent: { padding: 18, paddingBottom: 110 },
+  screen: { flex: 1 },
+  screenContent: { paddingBottom: 110 },
+
+  // Hero Section
+  heroContainer: { width: "100%", overflow: "hidden" },
+  heroBannerGradient: {
+    paddingTop: Platform.OS === "ios" ? 18 : 14,
+    paddingBottom: 40,
+    paddingHorizontal: 16,
+    minHeight: 180,
+  },
+  ambientOrb: { position: "absolute", borderRadius: 999 },
+  heroHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 16,
+  },
+  heroBackBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.16)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.22)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 10,
+  },
+  heroTitle: { fontSize: 24, fontWeight: "800", color: "#FFFFFF", letterSpacing: -0.5 },
+  heroPropertyBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 4,
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(255,255,255,0.14)",
+    paddingHorizontal: 9,
+    paddingVertical: 3.5,
+    borderRadius: 12,
+  },
+  activeDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#10B981" },
+  heroPropertyText: { fontSize: 11.5, fontWeight: "600", color: "#FFFFFF" },
+  heroMenuSwitchBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(255,255,255,0.16)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.22)",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+  },
+  heroMenuSwitchText: { color: "#FFFFFF", fontSize: 12, fontWeight: "700" },
+  floatingKpiWrap: { paddingHorizontal: 16, marginTop: -26, zIndex: 10 },
+  mainPaymentsBody: { paddingHorizontal: 16, marginTop: 10 },
+
   topNavRow: { flexDirection: "row", alignItems: "center", marginBottom: 6 },
   backButton: {
     width: 38,
@@ -1723,9 +1923,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderWidth: 1,
     borderColor: COLORS.border,
-    marginBottom: 14,
+    marginBottom: 4,
     alignItems: "center",
     justifyContent: "space-between",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 5,
+    elevation: 3,
   },
   kpiItem: { flex: 1, alignItems: "center" },
   kpiLabel: { fontSize: 11, fontWeight: "600", color: COLORS.secondary, textTransform: "uppercase" },
@@ -2183,6 +2388,42 @@ const styles = StyleSheet.create({
   menuHeaderRow: { marginBottom: 12 },
   menuHeaderTitle: { fontSize: 13, fontWeight: "800", letterSpacing: 0.6 },
   menuHeaderSub: { fontSize: 12, marginTop: 2 },
+  menuGridContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+  },
+  menuGridItem: {
+    width: "48%",
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 16,
+    alignItems: "flex-start",
+    marginBottom: 12,
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  menuGridIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+  menuGridTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    letterSpacing: -0.2,
+    marginBottom: 3,
+  },
+  menuGridSub: {
+    fontSize: 12,
+    lineHeight: 16,
+  },
   menuCardsList: { gap: 10 },
   menuCard: {
     flexDirection: "row",

@@ -1,19 +1,23 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
   ScrollView,
   StyleSheet,
-  TouchableOpacity,
+  Pressable,
+  Animated,
   LayoutAnimation,
   Platform,
   UIManager,
   RefreshControl,
+  Image,
+  TouchableOpacity,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { Dashboard, Fee, Hostel, Payment, Renter, Tab } from "../types";
-import { money, statusLabel } from "../utils/formatters";
-import { Header, StatCard, SectionTitle, EmptyState } from "../components/common";
+import { money } from "../utils/formatters";
+import { StatCard, SectionTitle, EmptyState, AnimatedPressable, Reveal, CountUp } from "../components/common";
 import {
   DonutChart,
   BarChart,
@@ -23,14 +27,54 @@ import {
   MonthlyTrendData,
 } from "../components/charts";
 import { DashboardSkeleton } from "../components/Skeleton";
-import { exportFinancialStatementPDF, exportToCSV } from "../services/exportService";
-import { COLORS } from "../constants/theme";
+import { exportFinancialStatementPDF } from "../services/exportService";
+import { GRADIENTS, GOLD, RADIUS, shadow } from "../constants/theme";
 import { useTheme } from "../contexts/ThemeContext";
 import { useToast } from "../contexts/ToastContext";
+import { HostellaBrand } from "../components/HostellaBrand";
 import { haptic } from "../utils/haptics";
 
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+
+/** Soft chart container with an icon header. */
+function ChartCard({
+  icon,
+  title,
+  subtitle,
+  right,
+  children,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  subtitle?: string;
+  right?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  const { colors, isDark } = useTheme();
+  return (
+    <View
+      style={[
+        styles.chartCard,
+        { backgroundColor: colors.card, borderColor: colors.border },
+        shadow(1, isDark),
+      ]}
+    >
+      <View style={styles.chartHead}>
+        <View style={[styles.chartIcon, { backgroundColor: colors.primaryLight }]}>
+          <Ionicons name={icon} size={18} color={colors.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.chartTitle, { color: colors.text }]}>{title}</Text>
+          {subtitle ? <Text style={[styles.chartSubtitle, { color: colors.secondary }]}>{subtitle}</Text> : null}
+        </View>
+        {right}
+      </View>
+      {children}
+    </View>
+  );
 }
 
 interface DashboardScreenProps {
@@ -88,7 +132,7 @@ export function DashboardScreen({
       await exportFinancialStatementPDF(
         fees,
         { totalBilled, totalCollected, totalOutstanding, collectionRate },
-        selectedHostel?.name || "StayNexa Property"
+        selectedHostel?.name || "Hostella Property"
       );
       toast.success("Financial statement opened for download/sharing!", "Export Ready");
     } catch (e) {
@@ -168,76 +212,44 @@ export function DashboardScreen({
     { label: "Cancelled", value: dashboard.cancelledRepairs, color: colors.secondary },
   ];
 
-  // 4 Top Hero Action Cards (MakeMyTrip style)
-  const heroActions = [
-    {
-      id: "rooms",
-      title: "Rooms",
-      icon: "bed-outline" as const,
-      color: colors.primary,
-      bg: isDark ? "#1E1B4B" : "#EEF2FF",
-      onPress: () => onNavigate?.("rooms"),
-    },
-    {
-      id: "renters",
-      title: "Renters",
-      icon: "person-circle-outline" as const,
-      color: "#059669",
-      bg: isDark ? "#064E3B" : "#ECFDF5",
-      onPress: () => onNavigate?.("renters"),
-    },
-    {
-      id: "payments",
-      title: "Payments",
-      icon: "wallet-outline" as const,
-      color: "#D97706",
-      bg: isDark ? "#451A03" : "#FEF3C7",
-      onPress: () => onNavigate?.("payments"),
-    },
-    {
-      id: "repairs",
-      title: "Repairs",
-      icon: "build-outline" as const,
-      color: "#E11D48",
-      bg: isDark ? "#4C0519" : "#FFE4E6",
-      onPress: () => onNavigate?.("repairs"),
-    },
-  ];
+  const collectedDelta =
+    lastMonthCollected > 0
+      ? ((thisMonthCollected - lastMonthCollected) / lastMonthCollected) * 100
+      : thisMonthCollected > 0
+        ? 100
+        : 0;
+  const deltaUp = collectedDelta >= 0;
 
-  // 4 Core Module Services: Distinct, high-utility modules with zero duplicate routes
-  const baseServices = [
-    {
-      id: "hostels",
-      title: "Properties",
-      icon: "business-outline" as const,
-      color: "#4F46E5",
-      bg: isDark ? "#1E1B4B" : "#EEF2FF",
-      onPress: () => onNavigate?.("hostels"),
-    },
-    {
-      id: "notices",
-      title: "Notices",
-      icon: "megaphone-outline" as const,
-      color: "#D97706",
-      bg: isDark ? "#451A03" : "#FEF3C7",
-      onPress: () => onNavigate?.("notifications"),
-    },
-    {
-      id: "expenses",
-      title: "Expenses",
-      icon: "pie-chart-outline" as const,
-      color: "#059669",
-      bg: isDark ? "#064E3B" : "#ECFDF5",
-      onPress: () => (onNavigateToExpenses ? onNavigateToExpenses() : onNavigate?.("payments")),
-    },
-    {
-      id: "settings",
-      title: "Settings",
-      icon: "settings-outline" as const,
-      color: "#475569",
-      bg: isDark ? "#1E293B" : "#F1F5F9",
-      onPress: () => onNavigate?.("more"),
-    },
+  // Entrance animation for the hero
+  const heroAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.spring(heroAnim, { toValue: 1, speed: 12, bounciness: 6, useNativeDriver: true }).start();
+  }, [heroAnim]);
+
+  const occFill = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(occFill, { toValue: Math.min(100, occupancyRate), duration: 1000, useNativeDriver: false }).start();
+  }, [occFill, occupancyRate]);
+
+  const heroColors = isDark ? GRADIENTS.heroDark : GRADIENTS.hero;
+  const pendingProofs = paymentProofStats.submitted;
+  const openRepairs = (dashboard.submittedRepairs || 0) + (dashboard.inProgressRepairs || 0);
+  const insights = [
+    { key: "overdue", n: dashboard.overdueFees || 0, label: "overdue fees", icon: "alert-circle" as const, fg: colors.danger, bg: colors.dangerLight, go: () => onNavigate?.("fees") },
+    { key: "proofs", n: pendingProofs || 0, label: "proofs to review", icon: "receipt" as const, fg: colors.warning, bg: colors.warningLight, go: () => onNavigate?.("payments") },
+    { key: "repairs", n: openRepairs, label: "open repairs", icon: "build" as const, fg: colors.primary, bg: colors.primaryLight, go: () => onNavigate?.("repairs") },
+  ].filter((i) => i.n > 0);
+
+  // Quick actions — preserved routes with exact pastel colors from mockup
+  const quickActions = [
+    { id: "rooms", title: "Rooms", icon: "bed-outline" as const, fg: "#6D28D9", bg: "#F3E8FF", onPress: () => onNavigate?.("rooms") },
+    { id: "renters", title: "Renters", icon: "people-outline" as const, fg: "#059669", bg: "#D1FAE5", onPress: () => onNavigate?.("renters") },
+    { id: "payments", title: "Payments", icon: "wallet-outline" as const, fg: "#D97706", bg: "#FEF3C7", badge: pendingProofs, onPress: () => onNavigate?.("payments") },
+    { id: "repairs", title: "Repairs", icon: "build-outline" as const, fg: "#E11D48", bg: "#FFE4E6", onPress: () => onNavigate?.("repairs") },
+    { id: "hostels", title: "Properties", icon: "business-outline" as const, fg: "#4338CA", bg: "#E0E7FF", onPress: () => onNavigate?.("hostels") },
+    { id: "notices", title: "Notices", icon: "notifications-outline" as const, fg: "#0284C7", bg: "#E0F2FE", onPress: () => onNavigate?.("more") },
+    { id: "expenses", title: "Expenses", icon: "pie-chart-outline" as const, fg: "#7C3AED", bg: "#EDE9FE", onPress: () => (onNavigateToExpenses ? onNavigateToExpenses() : onNavigate?.("payments")) },
+    { id: "settings", title: "Settings", icon: "settings-outline" as const, fg: "#475569", bg: "#F1F5F9", onPress: () => onNavigate?.("more") },
   ];
 
   if (loading) {
@@ -246,11 +258,6 @@ export function DashboardScreen({
         style={[styles.screen, { backgroundColor: colors.background }]}
         contentContainerStyle={styles.screenContent}
       >
-        <Header
-          title="Dashboard"
-          subtitle="Live overview of your StayNexa operations."
-          onRefresh={onRefresh}
-        />
         <DashboardSkeleton />
       </ScrollView>
     );
@@ -272,400 +279,570 @@ export function DashboardScreen({
         />
       }
     >
-      <Header
-        title="Dashboard"
-        subtitle="Live overview of your StayNexa operations."
-        onRefresh={onRefresh}
-      />
-
-      {selectedHostel ? (
-        <TouchableOpacity
-          activeOpacity={0.8}
-          onPress={() => {
-            haptic.cardPress();
-            onNavigate?.("hostels");
-          }}
-          style={[styles.propertyCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+      {/* ── Deep Royal Navy Hero Banner ── */}
+      <View style={styles.heroContainer}>
+        <LinearGradient
+          colors={isDark ? ["#060B1E", "#0B163B", "#132357"] : ["#0A1333", "#122566", "#1E3A8A"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0.35, y: 1 }}
+          style={styles.heroBannerGradient}
         >
-          <View style={[styles.propertyIcon, { backgroundColor: colors.primaryLight }]}>
-            <Ionicons name="business" size={23} color={colors.primary} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 2 }}>
-              <View style={[styles.liveDot, { backgroundColor: colors.success }]} />
-              <Text style={[styles.propertyLabel, { color: colors.secondary }]}>ACTIVE PROPERTY</Text>
-            </View>
-            <Text style={[styles.propertyName, { color: colors.text }]} numberOfLines={1}>{selectedHostel.name}</Text>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 3 }}>
-              <Ionicons name="location-outline" size={13} color={colors.secondary} />
-              <Text style={[styles.propertyLocation, { color: colors.secondary }]} numberOfLines={1}>
-                {selectedHostel.city || ""}
-                {selectedHostel.city && selectedHostel.state ? ", " : ""}
-                {selectedHostel.state || selectedHostel.address || "Property"}
-              </Text>
-            </View>
-          </View>
-          <View style={[styles.activeLivePill, { backgroundColor: colors.successLight }]}>
-            <Text style={[styles.activeLiveText, { color: colors.success }]}>Live</Text>
-          </View>
-        </TouchableOpacity>
-      ) : null}
+          {/* Ambient Lighting Orbs */}
+          <View style={[styles.ambientOrb, { top: -60, right: -40, width: 220, height: 220, backgroundColor: "rgba(59, 130, 246, 0.25)" }]} />
+          <View style={[styles.ambientOrb, { top: 20, left: -60, width: 170, height: 170, backgroundColor: "rgba(139, 92, 246, 0.22)" }]} />
 
-      {/* ── Bento Services Menu ── */}
-      <View style={styles.bentoSection}>
-        {/* Top 4 Elevated Hero Action Cards */}
-        <View style={styles.heroRow}>
-          {heroActions.map((item) => (
-            <TouchableOpacity
-              key={item.id}
-              style={[
-                styles.heroCard,
-                { backgroundColor: colors.card, borderColor: colors.border },
-              ]}
-              activeOpacity={0.75}
-              onPress={() => {
-                haptic.cardPress();
-                item.onPress();
-              }}
-            >
-              <View style={[styles.heroIconBox, { backgroundColor: item.bg }]}>
-                <Ionicons name={item.icon} size={24} color={item.color} />
+          {/* Top Row: App Logo + Title + Tagline */}
+          <View style={styles.headerTopBar}>
+            <View style={styles.brandRow}>
+              <HostellaBrand variant="icon" size="medium" />
+              <View style={{ marginLeft: 10 }}>
+                <HostellaBrand variant="wordmark" colorScheme="dark" size="medium" style={{ alignItems: "flex-start" }} />
+                <Text style={styles.brandSubtitle}>Hostel Management Made Simple</Text>
               </View>
-              <Text
-                style={[styles.heroTitle, { color: colors.text }]}
-                numberOfLines={1}
-              >
-                {item.title}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {/* Bottom Unified Bento Services Card: Core Modules */}
-        <View
-          style={[
-            styles.bentoCard,
-            { backgroundColor: colors.card, borderColor: colors.border },
-          ]}
-        >
-          <View style={styles.bentoGrid}>
-            {baseServices.map((svc) => (
-              <TouchableOpacity
-                key={svc.id}
-                style={styles.bentoCell}
-                activeOpacity={0.7}
-                onPress={() => {
-                  haptic.cardPress();
-                  svc.onPress();
-                }}
-              >
-                <View style={[styles.bentoIconBox, { backgroundColor: svc.bg }]}>
-                  <Ionicons name={svc.icon} size={22} color={svc.color} />
-                </View>
-                <Text
-                  style={[styles.bentoLabel, { color: colors.text }]}
-                  numberOfLines={2}
-                >
-                  {svc.title}
-                </Text>
-              </TouchableOpacity>
-            ))}
+            </View>
           </View>
-        </View>
-      </View>
 
-      <View style={styles.statsGrid}>
-        <StatCard title="Total Rooms" value={dashboard.totalRooms} icon="bed-outline" tone="blue" onPress={() => onNavigate?.("rooms")} />
-        <StatCard title="Available Rooms" value={dashboard.availableRooms} icon="key-outline" tone="green" onPress={() => onNavigate?.("rooms")} />
-        <StatCard title="Occupied Rooms" value={dashboard.occupiedRooms} icon="people-outline" tone="blue" onPress={() => onNavigate?.("rooms")} />
-        <StatCard title="Active Renters" value={dashboard.activeRenters} icon="person-circle-outline" tone="orange" onPress={() => onNavigate?.("renters")} />
-        <StatCard title="Outstanding Fees" value={money(dashboard.outstandingFees)} icon="alert-circle-outline" tone="red" onPress={() => onNavigate?.("fees")} />
-        <StatCard title="Payments" value={dashboard.totalPayments} icon="receipt-outline" tone="purple" onPress={() => onNavigate?.("payments")} />
-      </View>
-
-      {/* ── Visual Occupancy Gauge & Distribution ── */}
-      <SectionTitle title="Occupancy overview" />
-      <View style={[styles.chartCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <View style={styles.chartCardHeader}>
-          <View>
-            <Text style={[styles.chartTitle, { color: colors.text }]}>Real-time Room Fill Gauge</Text>
-            <Text style={[styles.chartSubtitle, { color: colors.secondary }]}>Current resident occupancy rate</Text>
-          </View>
-          <View style={[styles.rateBadge, { backgroundColor: colors.primaryLight }]}>
-            <Text style={[styles.rateValue, { color: colors.primary }]}>{occupancyRate}%</Text>
-            <Text style={[styles.rateLabel, { color: colors.secondary }]}>occupied</Text>
-          </View>
-        </View>
-        <OccupancyGauge
-          percentage={occupancyRate}
-          occupiedBeds={dashboard.occupiedRooms}
-          totalBeds={dashboard.totalRooms}
-        />
-        <View style={{ height: 10 }} />
-        <DonutChart data={roomChart} centerText={`${occupancyRate}%`} centerSub="occupied" />
-      </View>
-
-      {/* ── Revenue Trends & Month-over-Month Growth ── */}
-      <SectionTitle title="Revenue trends & Growth" />
-      <View style={[styles.chartCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-          <View>
-            <Text style={[styles.chartTitle, { color: colors.text }]}>Collection vs Outstanding</Text>
-            <Text style={[styles.chartSubtitle, { color: colors.secondary }]}>Monthly trajectory across past 6 months</Text>
-          </View>
-          <TouchableOpacity
-            style={[styles.exportBtn, { backgroundColor: colors.primaryLight }]}
-            onPress={handleExportFinancialReport}
-            activeOpacity={0.8}
+          {/* Active Property Card */}
+          <Animated.View
+            style={{
+              opacity: heroAnim,
+              transform: [{ translateY: heroAnim.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }],
+            }}
           >
-            <Ionicons name="document-text-outline" size={14} color={colors.primary} />
-            <Text style={[styles.exportBtnText, { color: colors.primary }]}>Export PDF</Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.activePropertyCard}
+              onPress={() => onNavigate?.("hostels")}
+              activeOpacity={0.85}
+            >
+              <View style={styles.activePropertyLeft}>
+                <View style={styles.activePropertyBadge}>
+                  <View style={styles.activeDot} />
+                  <Text style={styles.activeBadgeText}>Active Property</Text>
+                </View>
+                <Text style={styles.activePropertyName} numberOfLines={1}>
+                  {selectedHostel?.name || "Hostella Property"}
+                </Text>
+                <View style={styles.activePropertyLocRow}>
+                  <Ionicons name="location-outline" size={13} color="rgba(255,255,255,0.75)" />
+                  <Text style={styles.activePropertyLocText} numberOfLines={1}>
+                    {selectedHostel?.city || selectedHostel?.address || selectedHostel?.type || "Tap to switch property"}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.activePropertyActionBox}>
+                <View style={styles.propertyIconCircle}>
+                  <Ionicons name="business" size={20} color="#FFFFFF" />
+                </View>
+                <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.75)" />
+              </View>
+            </TouchableOpacity>
+          </Animated.View>
+        </LinearGradient>
+
+        {/* ── 3 Floating Metric Cards (Occupancy, Collected, Outstanding) ── */}
+        <View style={styles.floatingKpiRow}>
+          {/* Card 1: Occupancy */}
+          <View style={[styles.floatingCard, { backgroundColor: colors.card, borderColor: colors.border }, shadow(2, isDark)]}>
+            <Text style={[styles.floatingCardLabel, { color: colors.secondary }]}>Occupancy</Text>
+            <Text style={[styles.floatingCardValue, { color: colors.text }]}>{occupancyRate}%</Text>
+            <View style={styles.miniProgressBarTrack}>
+              <Animated.View
+                style={[
+                  styles.miniProgressBarFill,
+                  {
+                    backgroundColor: "#6366F1",
+                    width: occFill.interpolate({ inputRange: [0, 100], outputRange: ["0%", "100%"] }),
+                  },
+                ]}
+              />
+            </View>
+          </View>
+
+          {/* Card 2: Collected this month */}
+          <View style={[styles.floatingCard, { backgroundColor: colors.card, borderColor: colors.border }, shadow(2, isDark)]}>
+            <Text style={[styles.floatingCardLabel, { color: colors.secondary }]}>Collected this month</Text>
+            <Text style={[styles.floatingCardValue, { color: colors.text }]} numberOfLines={1}>
+              ₹{Math.round(thisMonthCollected).toLocaleString()}
+            </Text>
+            <View style={[styles.statusTag, { backgroundColor: deltaUp ? "#DCFCE7" : "#FEE2E2" }]}>
+              <Ionicons name={deltaUp ? "arrow-up" : "arrow-down"} size={9} color={deltaUp ? "#16A34A" : "#DC2626"} />
+              <Text style={[styles.statusTagText, { color: deltaUp ? "#16A34A" : "#DC2626" }]}>
+                {Math.abs(Math.round(collectedDelta))}%
+              </Text>
+            </View>
+          </View>
+
+          {/* Card 3: Outstanding */}
+          <View style={[styles.floatingCard, { backgroundColor: colors.card, borderColor: colors.border }, shadow(2, isDark)]}>
+            <Text style={[styles.floatingCardLabel, { color: colors.secondary }]}>Outstanding</Text>
+            <Text style={[styles.floatingCardValue, { color: colors.text }]} numberOfLines={1}>
+              ₹{Math.round(dashboard.outstandingFees || 0).toLocaleString()}
+            </Text>
+            <View style={[styles.statusTag, { backgroundColor: "#FEE2E2" }]}>
+              <Ionicons name="alert-circle" size={9} color="#DC2626" />
+              <Text style={[styles.statusTagText, { color: "#DC2626" }]}>overdue</Text>
+            </View>
+          </View>
         </View>
-
-        <RevenueTrendChart data={revenueTrendData} />
-
-        <MonthOverMonthCard
-          thisMonthAmount={thisMonthCollected}
-          lastMonthAmount={lastMonthCollected}
-        />
       </View>
 
-      <SectionTitle title="Fee status" />
-      <View style={[styles.chartCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <Text style={[styles.chartTitle, { color: colors.text }]}>Current fee collection</Text>
-        <DonutChart
-          data={feeChart}
-          centerText={String(dashboard.paidFees + dashboard.pendingFees + dashboard.partiallyPaidFees + dashboard.overdueFees)}
-          centerSub="fees"
-        />
-        <View style={[styles.outstandingBox, { backgroundColor: colors.dangerLight }]}>
-          <Text style={[styles.outstandingLabel, { color: colors.danger }]}>Outstanding amount</Text>
-          <Text style={[styles.outstandingAmount, { color: colors.danger }]}>{money(dashboard.outstandingFees)}</Text>
-        </View>
-      </View>
-
-      <SectionTitle title="Repair requests" />
-      <View style={[styles.chartCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <Text style={[styles.chartTitle, { color: colors.text }]}>Repair status</Text>
-        <Text style={[styles.chartSubtitle, { color: colors.secondary }]}>Current request workflow</Text>
-        <DonutChart data={repairChart} centerText={String(dashboard.totalRepairRequests)} centerSub="requests" />
-      </View>
-
-      <SectionTitle title="Payment proof review" />
-      <View style={[styles.chartCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <Text style={[styles.chartTitle, { color: colors.text }]}>Proof status</Text>
-        <Text style={[styles.chartSubtitle, { color: colors.secondary }]}>
-          Payments are made outside StayNexa; this dashboard reviews submitted proof.
-        </Text>
-        <DonutChart
-          data={[
-            { label: "Submitted", value: paymentProofStats.submitted, color: colors.warning },
-            { label: "Approved", value: paymentProofStats.approved, color: colors.success },
-            { label: "Rejected", value: paymentProofStats.rejected, color: colors.danger },
-          ]}
-          centerText={String(payments.length)}
-          centerSub="proofs"
-        />
-      </View>
-
-      <SectionTitle title="Approved payment activity" />
-      <View style={[styles.chartCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <Text style={[styles.chartTitle, { color: colors.text }]}>Approved payments by month</Text>
-        <Text style={[styles.chartSubtitle, { color: colors.secondary }]}>Only approved payment proofs are included.</Text>
-        {monthlyPaymentBars.some((item) => item.value > 0) ? (
-          <BarChart
-            data={monthlyPaymentBars.map((item) => ({
-              label: item.label,
-              value: Math.round(item.value),
-              color: colors.primary,
-            }))}
-          />
-        ) : (
-          <EmptyState
-            icon="bar-chart-outline"
-            title="No approved payment activity"
-            description="Approved payment proofs will appear here."
-          />
+      <View style={styles.mainBodyContent}>
+        {/* ── Needs attention ── */}
+        {insights.length > 0 && (
+          <Reveal delay={140}>
+            <View style={styles.insightRow}>
+              {insights.map((i) => (
+                <Pressable
+                  key={i.key}
+                  onPress={() => {
+                    haptic.cardPress();
+                    i.go();
+                  }}
+                  style={[styles.insightChip, { backgroundColor: i.bg }]}
+                >
+                  <Ionicons name={i.icon} size={15} color={i.fg} />
+                  <Text style={[styles.insightText, { color: i.fg }]}>
+                    {i.n} {i.label}
+                  </Text>
+                  <Ionicons name="chevron-forward" size={13} color={i.fg} />
+                </Pressable>
+              ))}
+            </View>
+          </Reveal>
         )}
-      </View>
 
-      <View
-        style={[
-          styles.liveUpdateCard,
-          {
-            backgroundColor: isDark ? colors.card : colors.primaryLight,
-            borderColor: colors.border,
-          },
-        ]}
-      >
-        <Ionicons name="sync-outline" size={19} color={colors.primary} />
-        <Text style={[styles.liveUpdateText, { color: isDark ? colors.text : colors.primaryDark }]}>
-          Dashboard auto-refreshes every 4 seconds and also refreshes immediately after changes.
-        </Text>
+        {/* ── Quick actions ── */}
+        <Reveal delay={200}>
+          <SectionTitle title="Quick Actions" />
+          <View
+            style={[
+              styles.quickCard,
+              { backgroundColor: colors.card, borderColor: colors.border },
+              shadow(1, isDark),
+            ]}
+          >
+            <View style={styles.quickGrid}>
+              {quickActions.map((a) => (
+                <AnimatedPressable
+                  key={a.id}
+                  containerStyle={styles.quickCell}
+                  style={{ alignItems: "center" }}
+                  scaleTo={0.9}
+                  onPress={a.onPress}
+                >
+                  <View style={[styles.quickIcon, { backgroundColor: a.bg }]}>
+                    <Ionicons name={a.icon} size={22} color={a.fg} />
+                    {"badge" in a && (a as any).badge > 0 ? (
+                      <View style={[styles.quickBadge, { backgroundColor: colors.danger, borderColor: colors.card }]}>
+                        <Text style={styles.quickBadgeText}>{(a as any).badge > 9 ? "9+" : (a as any).badge}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  <Text style={[styles.quickLabel, { color: colors.text }]} numberOfLines={1}>
+                    {a.title}
+                  </Text>
+                </AnimatedPressable>
+              ))}
+            </View>
+          </View>
+        </Reveal>
+
+        {/* ── At a Glance (2x2 Matching Mockup) ── */}
+        <Reveal delay={280}>
+          <SectionTitle title="At a Glance" />
+          <View style={styles.atAGlanceGrid}>
+            {/* Card 1: Total Rooms */}
+            <Pressable
+              style={[styles.glanceCard, { backgroundColor: colors.card, borderColor: colors.border }, shadow(1, isDark)]}
+              onPress={() => onNavigate?.("rooms")}
+            >
+              <View style={styles.glanceHeader}>
+                <View style={[styles.glanceIconCircle, { backgroundColor: "#D1FAE5" }]}>
+                  <Ionicons name="bed-outline" size={14} color="#059669" />
+                </View>
+                <Text style={[styles.glanceLabel, { color: colors.secondary }]} numberOfLines={1}>Total Rooms</Text>
+                <Ionicons name="chevron-forward" size={13} color={colors.secondary} style={{ marginLeft: "auto" }} />
+              </View>
+              <Text style={[styles.glanceValue, { color: colors.text }]}>{dashboard.totalRooms}</Text>
+              <View style={styles.glanceSubRow}>
+                <View style={[styles.glanceDot, { backgroundColor: "#8B5CF6" }]} />
+                <Text style={[styles.glanceSubText, { color: colors.secondary }]}>
+                  {dashboard.occupiedRooms} occupied
+                </Text>
+              </View>
+            </Pressable>
+
+            {/* Card 2: Total Renters */}
+            <Pressable
+              style={[styles.glanceCard, { backgroundColor: colors.card, borderColor: colors.border }, shadow(1, isDark)]}
+              onPress={() => onNavigate?.("renters")}
+            >
+              <View style={styles.glanceHeader}>
+                <View style={[styles.glanceIconCircle, { backgroundColor: "#DBEAFE" }]}>
+                  <Ionicons name="people-outline" size={14} color="#2563EB" />
+                </View>
+                <Text style={[styles.glanceLabel, { color: colors.secondary }]} numberOfLines={1}>Total Renters</Text>
+                <Ionicons name="chevron-forward" size={13} color={colors.secondary} style={{ marginLeft: "auto" }} />
+              </View>
+              <Text style={[styles.glanceValue, { color: colors.text }]}>{dashboard.activeRenters}</Text>
+              <View style={styles.glanceSubRow}>
+                <View style={[styles.glanceDot, { backgroundColor: "#3B82F6" }]} />
+                <Text style={[styles.glanceSubText, { color: colors.secondary }]}>
+                  {dashboard.activeRenters} active
+                </Text>
+              </View>
+            </Pressable>
+
+            {/* Card 3: Available Rooms (eliminates repetition of floating Collected card) */}
+            <Pressable
+              style={[styles.glanceCard, { backgroundColor: colors.card, borderColor: colors.border }, shadow(1, isDark)]}
+              onPress={() => onNavigate?.("rooms")}
+            >
+              <View style={styles.glanceHeader}>
+                <View style={[styles.glanceIconCircle, { backgroundColor: "#DCFCE7" }]}>
+                  <Ionicons name="checkmark-done-circle-outline" size={14} color="#16A34A" />
+                </View>
+                <Text style={[styles.glanceLabel, { color: colors.secondary }]} numberOfLines={1}>Available Rooms</Text>
+                <Ionicons name="chevron-forward" size={13} color={colors.secondary} style={{ marginLeft: "auto" }} />
+              </View>
+              <Text style={[styles.glanceValue, { color: colors.text }]}>
+                {dashboard.availableRooms ?? Math.max(0, dashboard.totalRooms - dashboard.occupiedRooms)}
+              </Text>
+              <View style={styles.glanceSubRow}>
+                <View style={[styles.glanceDot, { backgroundColor: "#16A34A" }]} />
+                <Text style={[styles.glanceSubText, { color: colors.secondary }]}>
+                  Ready for check-in
+                </Text>
+              </View>
+            </Pressable>
+
+            {/* Card 4: Pending Repairs */}
+            <Pressable
+              style={[styles.glanceCard, { backgroundColor: colors.card, borderColor: colors.border }, shadow(1, isDark)]}
+              onPress={() => onNavigate?.("repairs")}
+            >
+              <View style={styles.glanceHeader}>
+                <View style={[styles.glanceIconCircle, { backgroundColor: "#FEF3C7" }]}>
+                  <Ionicons name="build-outline" size={14} color="#D97706" />
+                </View>
+                <Text style={[styles.glanceLabel, { color: colors.secondary }]} numberOfLines={1}>Pending Repairs</Text>
+              </View>
+              <Text style={[styles.glanceValue, { color: colors.text }]}>{openRepairs}</Text>
+              <View style={styles.glanceSubRow}>
+                <Ionicons name="flash-outline" size={11} color="#EF4444" />
+                <Text style={[styles.glanceSubText, { color: "#EF4444", fontWeight: "700" }]}>
+                  {dashboard.submittedRepairs || 0} urgent
+                </Text>
+              </View>
+            </Pressable>
+          </View>
+        </Reveal>
+
+        {/* ── Full Rooms ── */}
+        <SectionTitle title="Full Rooms overview" />
+        <ChartCard
+          icon="speedometer-outline"
+          title="Real-time Room Fill Gauge"
+          subtitle="Current resident occupancy rate"
+          right={
+            <View style={[styles.rateBadge, { backgroundColor: colors.primaryLight }]}>
+              <Text style={[styles.rateValue, { color: colors.primary }]}>{occupancyRate}%</Text>
+            </View>
+          }
+        >
+          <OccupancyGauge
+            percentage={occupancyRate}
+            occupiedBeds={dashboard.occupiedRooms}
+            totalBeds={dashboard.totalRooms}
+          />
+          <View style={{ height: 10 }} />
+          <DonutChart data={roomChart} centerText={`${occupancyRate}%`} centerSub="occupied" />
+        </ChartCard>
+
+        {/* ── Revenue ── */}
+        <SectionTitle title="Revenue trends & Growth" />
+        <ChartCard
+          icon="trending-up-outline"
+          title="Collection vs To Collect"
+          subtitle="Past 6 months"
+          right={
+            <Pressable
+              style={[styles.exportBtn, { backgroundColor: colors.primaryLight }]}
+              onPress={handleExportFinancialReport}
+              hitSlop={6}
+            >
+              <Ionicons name="document-text-outline" size={14} color={colors.primary} />
+              <Text style={[styles.exportBtnText, { color: colors.primary }]}>Export PDF</Text>
+            </Pressable>
+          }
+        >
+          <RevenueTrendChart data={revenueTrendData} />
+          <MonthOverMonthCard thisMonthAmount={thisMonthCollected} lastMonthAmount={lastMonthCollected} />
+        </ChartCard>
+
+        {/* ── Fees ── */}
+        <SectionTitle title="Fee status" />
+        <ChartCard icon="card-outline" title="Current fee collection" subtitle="Paid, pending, partial and overdue">
+          <DonutChart
+            data={feeChart}
+            centerText={String(dashboard.paidFees + dashboard.pendingFees + dashboard.partiallyPaidFees + dashboard.overdueFees)}
+            centerSub="fees"
+          />
+          <View style={[styles.outstandingBox, { backgroundColor: colors.dangerLight }]}>
+            <View>
+              <Text style={[styles.outstandingLabel, { color: colors.danger }]}>To Collect amount</Text>
+              <Text style={[styles.outstandingAmount, { color: colors.danger }]}>{money(dashboard.outstandingFees)}</Text>
+            </View>
+            <Ionicons name="alert-circle" size={26} color={colors.danger} style={{ opacity: 0.55 }} />
+          </View>
+        </ChartCard>
+
+        {/* ── Repairs ── */}
+        <SectionTitle title="Repair requests" />
+        <ChartCard icon="build-outline" title="Repair status" subtitle="Current request workflow">
+          <DonutChart data={repairChart} centerText={String(dashboard.totalRepairRequests)} centerSub="requests" />
+        </ChartCard>
+
+        {/* ── Proofs ── */}
+        <SectionTitle title="Payment proof review" />
+        <ChartCard
+          icon="shield-checkmark-outline"
+          title="Proof status"
+          subtitle="Payments are made outside Hostella; this dashboard reviews submitted proof."
+        >
+          <DonutChart
+            data={[
+              { label: "Submitted", value: paymentProofStats.submitted, color: colors.warning },
+              { label: "Approved", value: paymentProofStats.approved, color: colors.success },
+              { label: "Rejected", value: paymentProofStats.rejected, color: colors.danger },
+            ]}
+            centerText={String(payments.length)}
+            centerSub="proofs"
+          />
+        </ChartCard>
+
+        {/* ── Approved activity ── */}
+        <SectionTitle title="Approved payment activity" />
+        <ChartCard icon="bar-chart-outline" title="Approved payments by month" subtitle="Only approved payment proofs are included.">
+          {monthlyPaymentBars.some((item) => item.value > 0) ? (
+            <BarChart
+              data={monthlyPaymentBars.map((item) => ({
+                label: item.label,
+                value: Math.round(item.value),
+                color: colors.primary,
+              }))}
+            />
+          ) : (
+            <EmptyState
+              icon="bar-chart-outline"
+              title="No approved payment activity"
+              description="Approved payment proofs will appear here."
+            />
+          )}
+        </ChartCard>
+
+        <View style={[styles.liveUpdateCard, { backgroundColor: colors.primaryLight }]}>
+          <Ionicons name="sync-outline" size={18} color={colors.primary} />
+          <Text style={[styles.liveUpdateText, { color: isDark ? colors.text : colors.primaryDark }]}>
+            Dashboard auto-refreshes every 4 seconds and also refreshes immediately after changes.
+          </Text>
+        </View>
       </View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: COLORS.background },
-  screenContent: { padding: 20, paddingBottom: 110 },
-  propertyCard: {
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 18,
-    padding: 16,
+  screen: { flex: 1 },
+  screenContent: { paddingBottom: 36 },
+
+  // Hero Section
+  heroContainer: { width: "100%", overflow: "hidden" },
+  heroBannerGradient: {
+    paddingTop: Platform.OS === "ios" ? 18 : 14,
+    paddingBottom: 40,
+    paddingHorizontal: 16,
+  },
+  ambientOrb: { position: "absolute", borderRadius: 999 },
+  headerTopBar: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 16,
-    shadowColor: "#0F172A",
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-  },
-  bentoSection: {
-    marginBottom: 18,
-  },
-  heroRow: {
-    flexDirection: "row",
     justifyContent: "space-between",
-    gap: 8,
     marginBottom: 16,
   },
-  heroCard: {
-    flex: 1,
-    borderWidth: 1,
-    borderRadius: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 4,
+  brandRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  brandLogoCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "#3B82F6",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#0F172A",
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.35)",
   },
-  heroIconBox: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
+  brandTitle: { color: "#FFFFFF", fontSize: 19, fontWeight: "800", letterSpacing: -0.4 },
+  brandSubtitle: { color: "rgba(255,255,255,0.72)", fontSize: 11, fontWeight: "500", marginTop: 1 },
+
+  // Active Property Card
+  activePropertyCard: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 6,
-  },
-  heroTitle: {
-    fontSize: 12,
-    fontWeight: "700",
-    textAlign: "center",
-  },
-  bentoCard: {
-    borderWidth: 1,
+    justifyContent: "space-between",
+    backgroundColor: "rgba(255,255,255,0.11)",
     borderRadius: 20,
-    paddingTop: 16,
-    paddingBottom: 2,
-    paddingHorizontal: 6,
-    shadowColor: "#0F172A",
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    paddingVertical: 14,
+    paddingHorizontal: 16,
   },
-  bentoGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-  },
-  bentoCell: {
-    width: "25%",
-    alignItems: "center",
-    marginBottom: 14,
-    paddingHorizontal: 2,
-  },
-  bentoIconBox: {
-    width: 44,
-    height: 44,
-    borderRadius: 13,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 5,
-  },
-  bentoLabel: {
-    fontSize: 11,
-    fontWeight: "600",
-    textAlign: "center",
-    lineHeight: 14,
-  },
-  propertyIcon: {
-    width: 46,
-    height: 46,
+  activePropertyLeft: { flex: 1, marginRight: 12 },
+  activePropertyBadge: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 4 },
+  activeDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "#10B981" },
+  activeBadgeText: { color: "#10B981", fontSize: 11, fontWeight: "700" },
+  activePropertyName: { color: "#FFFFFF", fontSize: 20, fontWeight: "800", letterSpacing: -0.4, marginBottom: 3 },
+  activePropertyLocRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  activePropertyLocText: { color: "rgba(255,255,255,0.75)", fontSize: 12, fontWeight: "500" },
+  activePropertyActionBox: { flexDirection: "row", alignItems: "center", gap: 8 },
+  propertyIconCircle: {
+    width: 38,
+    height: 38,
     borderRadius: 14,
-    backgroundColor: COLORS.primaryLight,
+    backgroundColor: "rgba(255,255,255,0.14)",
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 12,
-  },
-  liveDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-  },
-  activeLivePill: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  activeLiveText: {
-    fontSize: 11,
-    fontWeight: "800",
-  },
-  propertyLabel: { fontSize: 10, fontWeight: "800", color: COLORS.secondary, letterSpacing: 1 },
-  propertyName: { marginTop: 4, fontSize: 16, fontWeight: "800", color: COLORS.text },
-  propertyLocation: { marginTop: 3, fontSize: 12, color: COLORS.secondary },
-  statsGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
-  chartCard: {
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: "rgba(255,255,255,0.22)",
+  },
+
+  // Floating KPI Row
+  floatingKpiRow: {
+    flexDirection: "row",
+    gap: 9,
+    paddingHorizontal: 16,
+    marginTop: -26,
+    zIndex: 10,
+  },
+  floatingCard: {
+    flex: 1,
     borderRadius: 18,
-    padding: 16,
-    marginBottom: 14,
-    shadowColor: "#0F172A",
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-  },
-  chartCardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
-  chartTitle: { fontSize: 15, fontWeight: "800", color: COLORS.text },
-  chartSubtitle: { marginTop: 4, fontSize: 12, color: COLORS.secondary },
-  rateBadge: { backgroundColor: COLORS.primaryLight, borderRadius: 13, paddingVertical: 7, paddingHorizontal: 10, alignItems: "center" },
-  rateValue: { color: COLORS.primary, fontSize: 16, fontWeight: "800" },
-  rateLabel: { color: COLORS.secondary, fontSize: 9, marginTop: 1 },
-  outstandingBox: { borderRadius: 13, backgroundColor: COLORS.dangerLight, padding: 12, marginTop: 7 },
-  outstandingLabel: { fontSize: 11, color: COLORS.danger },
-  outstandingAmount: { marginTop: 3, fontSize: 18, fontWeight: "800", color: COLORS.danger },
-  liveUpdateCard: {
+    paddingVertical: 12,
+    paddingHorizontal: 10,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.primaryLight,
-    borderRadius: 16,
-    padding: 14,
-    marginTop: 18,
+    minHeight: 92,
+    justifyContent: "space-between",
+  },
+  floatingCardLabel: { fontSize: 10.5, fontWeight: "600", marginBottom: 2 },
+  floatingCardValue: { fontSize: 16, fontWeight: "800", letterSpacing: -0.3 },
+  miniProgressBarTrack: {
+    height: 4.5,
+    borderRadius: 2.5,
+    backgroundColor: "#E2E8F0",
+    marginTop: 6,
+    overflow: "hidden",
+  },
+  miniProgressBarFill: { height: 4.5, borderRadius: 2.5 },
+  statusTag: {
+    alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginTop: 4,
   },
-  liveUpdateText: { flex: 1, marginLeft: 10, color: COLORS.primaryDark, fontSize: 12, lineHeight: 18 },
-  exportBtn: {
+  statusTagText: { fontSize: 9.5, fontWeight: "700" },
+
+  // Main Body
+  mainBodyContent: { paddingHorizontal: 16, marginTop: 14 },
+
+  // At a Glance
+  atAGlanceGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", marginTop: 2 },
+  glanceCard: {
+    width: "48.5%",
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 12,
+    minHeight: 90,
+    marginBottom: 10,
+    justifyContent: "space-between",
+  },
+  glanceHeader: { flexDirection: "row", alignItems: "center", gap: 6 },
+  glanceIconCircle: { width: 26, height: 26, borderRadius: 8, alignItems: "center", justifyContent: "center" },
+  glanceLabel: { fontSize: 11, fontWeight: "600", flex: 1 },
+  glanceValue: { fontSize: 19, fontWeight: "800", letterSpacing: -0.4, marginVertical: 3 },
+  glanceSubRow: { flexDirection: "row", alignItems: "center", gap: 5 },
+  glanceDot: { width: 6, height: 6, borderRadius: 3 },
+  glanceSubText: { fontSize: 11, fontWeight: "500" },
+
+  // Quick Actions & Insights
+  insightRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 10 },
+  insightChip: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: RADIUS.pill,
   },
-  exportBtnText: {
-    fontSize: 12,
-    fontWeight: "700",
+  insightText: { fontSize: 12.5, fontWeight: "800" },
+  quickCard: { borderWidth: StyleSheet.hairlineWidth * 2, borderRadius: RADIUS.xl, paddingVertical: 14, paddingHorizontal: 6, marginBottom: 12 },
+  quickGrid: { flexDirection: "row", flexWrap: "wrap" },
+  quickCell: { width: "25%", marginVertical: 7, paddingHorizontal: 2 },
+  quickIcon: { width: 50, height: 50, borderRadius: 16, alignItems: "center", justifyContent: "center", marginBottom: 6 },
+  quickLabel: { fontSize: 11.5, fontWeight: "700", textAlign: "center" },
+  quickBadge: {
+    position: "absolute",
+    top: -5,
+    right: -5,
+    minWidth: 19,
+    height: 19,
+    borderRadius: 10,
+    paddingHorizontal: 4,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
   },
+  quickBadgeText: { color: "#FFFFFF", fontSize: 9.5, fontWeight: "900" },
+
+  // Charts
+  chartCard: { borderWidth: StyleSheet.hairlineWidth * 2, borderRadius: RADIUS.xl, padding: 16, marginBottom: 14 },
+  chartHead: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 6 },
+  chartIcon: { width: 38, height: 38, borderRadius: 13, alignItems: "center", justifyContent: "center" },
+  chartTitle: { fontSize: 15, fontWeight: "800", letterSpacing: -0.2 },
+  chartSubtitle: { marginTop: 2, fontSize: 12, lineHeight: 16 },
+  rateBadge: { borderRadius: RADIUS.pill, paddingVertical: 6, paddingHorizontal: 12 },
+  rateValue: { fontSize: 14, fontWeight: "800" },
+  exportBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    borderRadius: RADIUS.pill,
+  },
+  exportBtnText: { fontSize: 12, fontWeight: "800" },
+
+  outstandingBox: {
+    borderRadius: RADIUS.md,
+    padding: 14,
+    marginTop: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  outstandingLabel: { fontSize: 11.5, fontWeight: "700" },
+  outstandingAmount: { marginTop: 3, fontSize: 20, fontWeight: "800", letterSpacing: -0.4 },
+
+  liveUpdateCard: {
+    borderRadius: RADIUS.lg,
+    padding: 14,
+    marginTop: 14,
+    marginBottom: 8,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  liveUpdateText: { flex: 1, marginLeft: 10, fontSize: 12, lineHeight: 18, fontWeight: "500" },
 });

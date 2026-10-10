@@ -50,7 +50,7 @@ export function useRoomActions(cb: RoomActionsCallbacks) {
       setRoomCapacity("2");
       setShowRoomModal(false);
       await cb.onRefresh();
-      Alert.alert("Room added", `Room was added successfully with ${parsedCapacity} bed capacity.`);
+      Alert.alert("Room added", `Room was added successfully with ${parsedCapacity} occupant capacity.`);
     } catch (err) {
       Alert.alert(
         "Unable to add room",

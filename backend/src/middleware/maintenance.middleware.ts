@@ -50,7 +50,7 @@ export async function maintenanceMiddleware(req: Request, res: Response, next: N
     code: "MAINTENANCE_MODE",
     message:
       config.maintenanceNotice ||
-      "StayNexa is currently undergoing scheduled platform maintenance. Services will resume shortly.",
+      "Hostella is currently undergoing scheduled platform maintenance. Services will resume shortly.",
     alertBanner: config.alertBanner.active ? config.alertBanner : undefined,
   });
 }

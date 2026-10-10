@@ -22,6 +22,7 @@ import { SwipeableRow } from "../components/SwipeableRow";
 import { Fee, Hostel, Renter } from "../types";
 import { getName, getEmail, money, statusLabel } from "../utils/formatters";
 import { Header, EmptyState } from "../components/common";
+import { HostellaBrand } from "../components/HostellaBrand";
 import { haptic } from "../utils/haptics";
 
 interface FeesScreenProps {
@@ -194,6 +195,9 @@ export function FeesScreen(props: FeesScreenProps) {
           />
         }
       >
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+          <HostellaBrand variant="full" colorScheme={isDark ? "dark" : "light"} size="small" />
+        </View>
         <Header
           title="Fees"
           subtitle={selectedHostel?.name || "Select a hostel"}
@@ -202,14 +206,14 @@ export function FeesScreen(props: FeesScreenProps) {
         <View style={[styles.infoBar, { backgroundColor: colors.primaryLight, borderColor: colors.border }]}>
           <Ionicons name="information-circle" size={16} color={colors.primary} />
           <Text style={[styles.infoBarText, { color: colors.primaryDark }]}>
-            Track resident rental dues, schedule recurring charges, and manage payments.
+            See due rent, send reminders, and track money.
           </Text>
         </View>
         <View style={styles.actionRow}>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>Fee records</Text>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Rent Bills</Text>
             <Text style={[styles.sectionSubtitle, { color: colors.secondary }]}>
-              {fees.length} fee{fees.length === 1 ? "" : "s"} · {unpaidCount} unpaid
+              {fees.length} Bills · {unpaidCount} Due
             </Text>
           </View>
           <View style={styles.headerBtnGroup}>
@@ -238,7 +242,7 @@ export function FeesScreen(props: FeesScreenProps) {
                     { color: isBulkMode ? "#FFF" : colors.text },
                   ]}
                 >
-                  {isBulkMode ? "Cancel" : "Bulk"}
+                  {isBulkMode ? "Cancel" : "Select Many"}
                 </Text>
               </TouchableOpacity>
             )}
@@ -252,7 +256,7 @@ export function FeesScreen(props: FeesScreenProps) {
                 }}
               >
                 <Ionicons name="flash-outline" size={14} color={colors.primary} />
-                <Text style={[styles.generateButtonText, { color: colors.primary }]}>Auto</Text>
+                <Text style={[styles.generateButtonText, { color: colors.primary }]}>Auto-Bill</Text>
               </TouchableOpacity>
             )}
 
@@ -265,7 +269,7 @@ export function FeesScreen(props: FeesScreenProps) {
                 }}
               >
                 <Ionicons name="notifications-outline" size={14} color={colors.warning} />
-                <Text style={[styles.remindAllButtonText, { color: colors.warning }]}>Remind ({unpaidCount})</Text>
+                <Text style={[styles.remindAllButtonText, { color: colors.warning }]}>Send Reminder ({unpaidCount})</Text>
               </TouchableOpacity>
             ) : null}
 
@@ -287,8 +291,8 @@ export function FeesScreen(props: FeesScreenProps) {
         {fees.length === 0 ? (
           <EmptyState
             icon="receipt-outline"
-            title="No fees found"
-            description="Create the first fee for an active renter."
+            title="No bills found"
+            description="Add a bill for a resident to get started."
           />
         ) : (
           fees.map((fee) => {

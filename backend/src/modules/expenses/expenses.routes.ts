@@ -375,7 +375,7 @@ router.get(
       rows.sort((a, b) => b.date.localeCompare(a.date));
 
       // Build CSV output
-      let csvContent = `STAYNEXA FINANCIAL LEDGER - ${hostelName.toUpperCase()}\n`;
+      let csvContent = `HOSTELLA FINANCIAL LEDGER - ${hostelName.toUpperCase()}\n`;
       csvContent += `Generated: ${new Date().toISOString().slice(0, 10)}, Period: ${month || "All Time"}\n\n`;
       csvContent += "Date,Transaction Type,Category,Description / Title,Amount (INR),Reference / Notes\n";
 
@@ -395,7 +395,7 @@ router.get(
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader(
         "Content-Disposition",
-        `attachment; filename="StayNexa_${hostelName}_Financial_${month || "Report"}.csv"`,
+        `attachment; filename="Hostella_${hostelName}_Financial_${month || "Report"}.csv"`,
       );
       res.status(200).send(csvContent);
     } catch (error) {

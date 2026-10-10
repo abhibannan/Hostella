@@ -30,6 +30,8 @@ import { API_URL, parseJsonResponse } from "../services/api";
 import { Fee, Hostel, Notification, Payment, Repair, Renter, User } from "../types";
 import { money, today } from "../utils/formatters";
 import { EmptyState } from "../components/common";
+import { HostellaBrand } from "../components/HostellaBrand";
+import { getFullProofUrl } from "./PaymentsScreen";
 import { setSuspendBiometrics } from "../hooks/useBiometrics";
 
 interface RenterPortalScreenProps {
@@ -93,6 +95,7 @@ export function RenterPortalScreen({
   const { width: windowWidth } = useWindowDimensions();
   const [containerWidth, setContainerWidth] = useState(windowWidth || Dimensions.get("window").width);
   const pagerRef = useRef<ScrollView>(null);
+  const tabScrollRef = useRef<ScrollView>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const handleRefresh = useCallback(async () => {
@@ -163,6 +166,7 @@ export function RenterPortalScreen({
     const idx = RENTER_TABS.indexOf(tab);
     if (idx >= 0 && containerWidth > 0) {
       pagerRef.current?.scrollTo({ x: idx * containerWidth, animated: true });
+      tabScrollRef.current?.scrollTo({ x: Math.max(0, idx * 80 - 30), animated: true });
     }
   }, [containerWidth]);
 
@@ -171,7 +175,9 @@ export function RenterPortalScreen({
     if (containerWidth > 0) {
       const idx = Math.round(x / containerWidth);
       if (idx >= 0 && idx < RENTER_TABS.length) {
-        setActiveTab(RENTER_TABS[idx]);
+        const nextTab = RENTER_TABS[idx];
+        setActiveTab(nextTab);
+        tabScrollRef.current?.scrollTo({ x: Math.max(0, idx * 80 - 30), animated: true });
       }
     }
   }, [containerWidth]);
@@ -610,6 +616,22 @@ export function RenterPortalScreen({
     }
   }
 
+  const openRepairsCount = repairs.filter(
+    (r) => String(r.status).toUpperCase() !== "RESOLVED",
+  ).length;
+
+  const isOverdue = fees.some((f) => {
+    const rem = Math.max(0, Number(f.amount || 0) - Number(f.paidAmount || 0));
+    if (rem <= 0) return false;
+    if (String(f.status).toUpperCase() === "OVERDUE") return true;
+    if (f.dueDate) {
+      const due = new Date(`${f.dueDate}T00:00:00`);
+      const todayDate = new Date();
+      return due.getTime() < todayDate.getTime();
+    }
+    return false;
+  });
+
   const renterName =
     user.firstName || renter?.name || renter?.user?.firstName
       ? `${user.firstName || renter?.user?.firstName || ""} ${user.lastName || renter?.user?.lastName || ""}`.trim()
@@ -624,149 +646,275 @@ export function RenterPortalScreen({
 
   return (
     <View style={[s.container, { backgroundColor: theme.background }]}>
-      {/* Top Renter Bar */}
-      <LinearGradient
-        colors={isDark ? [theme.card, theme.surfaceSecondary] : ["#ffffff", "#f8fafc"]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0, y: 1 }}
-        style={[s.topBar, { borderBottomColor: theme.border }]}
-      >
-        <View style={s.topBarInfo}>
-          <Text style={[s.topGreeting, { color: theme.secondary }]}>Welcome,</Text>
-          <Text style={[s.topName, { color: theme.text }]} numberOfLines={1}>
-            {renterName}
-          </Text>
-          <View style={[s.hostelBadge, { backgroundColor: theme.primaryLight }]}>
-            <Ionicons name="business" size={13} color={theme.primary} />
-            <Text style={[s.hostelBadgeText, { color: theme.primary }]} numberOfLines={1}>
-              {hostel?.name || "StayNexa Hostel"}
-            </Text>
+      {/* ── Deep Royal Navy Hero Banner (Admin UI Style) ── */}
+      <View style={s.heroContainer}>
+        <LinearGradient
+          colors={isDark ? ["#060B1E", "#0B163B", "#132357"] : ["#0A1333", "#122566", "#1E3A8A"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0.35, y: 1 }}
+          style={s.heroBannerGradient}
+        >
+          {/* Ambient Lighting Orbs */}
+          <View style={[s.ambientOrb, { top: -60, right: -40, width: 220, height: 220, backgroundColor: "rgba(59, 130, 246, 0.25)" }]} />
+          <View style={[s.ambientOrb, { top: 20, left: -60, width: 170, height: 170, backgroundColor: "rgba(139, 92, 246, 0.22)" }]} />
+
+          {/* Top Row: App Logo + Title + Tagline + Actions */}
+          <View style={s.headerTopBar}>
+            <View style={s.brandRow}>
+              <HostellaBrand variant="icon" size="medium" />
+              <View style={{ marginLeft: 6 }}>
+                <HostellaBrand variant="wordmark" colorScheme="dark" size="small" style={{ alignItems: "flex-start" }} />
+                <Text style={s.brandSubtitle}>Resident Portal • {renterName}</Text>
+              </View>
+            </View>
+
+            <View style={s.heroActions}>
+              <TouchableOpacity
+                style={s.heroIconBtn}
+                onPress={() => setTheme(isDark ? "light" : "dark")}
+                accessibilityLabel="Toggle Theme"
+              >
+                <Ionicons
+                  name={isDark ? "sunny-outline" : "moon-outline"}
+                  size={17}
+                  color="#FFFFFF"
+                />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.heroIconBtn, { backgroundColor: "rgba(239, 68, 68, 0.25)" }]}
+                onPress={() => {
+                  Alert.alert("Logout", "Are you sure you want to exit?", [
+                    { text: "Cancel", style: "cancel" },
+                    { text: "Logout", style: "destructive", onPress: onLogout },
+                  ]);
+                }}
+                accessibilityLabel="Logout"
+              >
+                <Ionicons name="log-out-outline" size={17} color="#FCA5A5" />
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
 
-        <View style={s.topActions}>
+          {/* Active Residency Card */}
+          <View style={s.activePropertyCard}>
+            <View style={s.activePropertyLeft}>
+              <View style={s.activePropertyBadge}>
+                <View style={s.activeDot} />
+                <Text style={s.activeBadgeText}>Active Resident</Text>
+              </View>
+              <Text style={s.activePropertyName} numberOfLines={1}>
+                {hostel?.name || "Hostella Property"}
+              </Text>
+              <View style={s.activePropertyLocRow}>
+                <Ionicons name="home-outline" size={13} color="rgba(255,255,255,0.75)" />
+                <Text style={s.activePropertyLocText} numberOfLines={1}>
+                  {roomDisplay} {renter?.bed ? `• Bed ${renter.bed}` : ""}
+                </Text>
+              </View>
+            </View>
+
+            <View style={s.activePropertyActionBox}>
+              <View style={s.propertyIconCircle}>
+                <Ionicons name="person" size={18} color="#FFFFFF" />
+              </View>
+            </View>
+          </View>
+        </LinearGradient>
+
+        {/* ── 3 Floating Metric Cards (Admin Style) ── */}
+        <View style={s.floatingKpiRow}>
+          {/* Card 1: Pending Dues */}
           <TouchableOpacity
-            style={[s.iconBtn, { backgroundColor: isDark ? theme.surfaceSecondary : theme.primaryLight }]}
-            onPress={() => setTheme(isDark ? "light" : "dark")}
-            accessibilityLabel="Toggle Theme"
+            style={[s.floatingCard, { backgroundColor: theme.card, borderColor: theme.border }]}
+            onPress={() => handleTabPress("fees")}
+            activeOpacity={0.8}
           >
-            <Ionicons
-              name={isDark ? "sunny-outline" : "moon-outline"}
-              size={20}
-              color={theme.primary}
-            />
+            <Text style={[s.floatingCardLabel, { color: theme.secondary }]}>Pending Dues</Text>
+            <Text
+              style={[
+                s.floatingCardValue,
+                { color: totalDue > 0 ? (isOverdue ? theme.danger : theme.warning) : theme.success },
+              ]}
+              numberOfLines={1}
+            >
+              ₹{totalDue.toLocaleString()}
+            </Text>
+            <View
+              style={[
+                s.statusTag,
+                {
+                  backgroundColor: totalDue > 0
+                    ? (isOverdue
+                        ? (isDark ? "rgba(244,63,94,0.18)" : "#FEE2E2")
+                        : (isDark ? "rgba(245,158,11,0.18)" : "#FEF3C7"))
+                    : (isDark ? "rgba(34,197,94,0.18)" : "#DCFCE7"),
+                },
+              ]}
+            >
+              <Ionicons
+                name={totalDue > 0 ? (isOverdue ? "alert-circle" : "time") : "checkmark-circle"}
+                size={10}
+                color={totalDue > 0 ? (isOverdue ? theme.danger : theme.warning) : theme.success}
+              />
+              <Text
+                style={[
+                  s.statusTagText,
+                  { color: totalDue > 0 ? (isOverdue ? theme.danger : theme.warning) : theme.success },
+                ]}
+              >
+                {totalDue > 0 ? (isOverdue ? "Overdue" : "Due Soon") : "All Clear"}
+              </Text>
+            </View>
           </TouchableOpacity>
+
+          {/* Card 2: Monthly Fee */}
+          <View style={[s.floatingCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Text style={[s.floatingCardLabel, { color: theme.secondary }]}>Monthly Rent</Text>
+            <Text style={[s.floatingCardValue, { color: theme.text }]} numberOfLines={1}>
+              ₹{Number(renter?.monthlyFee || 0).toLocaleString()}
+            </Text>
+            <View
+              style={[
+                s.statusTag,
+                { backgroundColor: isDark ? "rgba(99,102,241,0.18)" : "#EEF2FF" },
+              ]}
+            >
+              <Ionicons name="calendar-outline" size={10} color={theme.primary} />
+              <Text style={[s.statusTagText, { color: theme.primary }]}>
+                {renter?.dueDateDay ? `Day ${renter.dueDateDay}` : "Monthly"}
+              </Text>
+            </View>
+          </View>
+
+          {/* Card 3: Maintenance */}
           <TouchableOpacity
-            style={[s.iconBtn, { backgroundColor: theme.dangerLight }]}
-            onPress={onLogout}
-            accessibilityLabel="Logout"
+            style={[s.floatingCard, { backgroundColor: theme.card, borderColor: theme.border }]}
+            onPress={() => handleTabPress("repairs")}
+            activeOpacity={0.8}
           >
-            <Ionicons name="log-out-outline" size={20} color={theme.danger} />
+            <Text style={[s.floatingCardLabel, { color: theme.secondary }]}>Maintenance</Text>
+            <Text style={[s.floatingCardValue, { color: theme.text }]} numberOfLines={1}>
+              {openRepairsCount}
+            </Text>
+            <View
+              style={[
+                s.statusTag,
+                {
+                  backgroundColor: openRepairsCount > 0
+                    ? (isDark ? "rgba(245,158,11,0.18)" : "#FEF3C7")
+                    : (isDark ? "rgba(34,197,94,0.18)" : "#DCFCE7"),
+                },
+              ]}
+            >
+              <Ionicons
+                name={openRepairsCount > 0 ? "build" : "checkmark"}
+                size={10}
+                color={openRepairsCount > 0 ? (theme.warning || "#D97706") : theme.success}
+              />
+              <Text
+                style={[
+                  s.statusTagText,
+                  { color: openRepairsCount > 0 ? (theme.warning || "#D97706") : theme.success },
+                ]}
+              >
+                {openRepairsCount > 0 ? `${openRepairsCount} Open` : "None"}
+              </Text>
+            </View>
           </TouchableOpacity>
         </View>
-      </LinearGradient>
+      </View>
 
-      {/* Renter Segment Tabs with Active Indicator */}
-      <View style={[s.tabNav, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
-        <TouchableOpacity
-          style={[s.tabNavItem, activeTab === "details" && { borderBottomColor: theme.primary, borderBottomWidth: 2 }]}
-          onPress={() => handleTabPress("details")}
+      {/* Renter Segment Tabs - Fits appropriately with smooth horizontal scroll and badges */}
+      <View style={[s.tabNavWrapper, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
+        <ScrollView
+          ref={tabScrollRef}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={s.tabScrollContent}
         >
-          <Ionicons
-            name={activeTab === "details" ? "person" : "person-outline"}
-            size={18}
-            color={activeTab === "details" ? theme.primary : theme.secondary}
-          />
-          <Text
-            style={[
-              s.tabNavLabel,
-              { color: activeTab === "details" ? theme.primary : theme.secondary },
-              activeTab === "details" && s.tabNavLabelActive,
-            ]}
-          >
-            Details
-          </Text>
-        </TouchableOpacity>
+          {RENTER_TABS.map((tab) => {
+            const isActive = activeTab === tab;
+            let iconName: any = "person-outline";
+            let label = "Details";
+            let badgeCount = 0;
 
-        <TouchableOpacity
-          style={[s.tabNavItem, activeTab === "fees" && { borderBottomColor: theme.primary, borderBottomWidth: 2 }]}
-          onPress={() => handleTabPress("fees")}
-        >
-          <Ionicons
-            name={activeTab === "fees" ? "wallet" : "wallet-outline"}
-            size={18}
-            color={activeTab === "fees" ? theme.primary : theme.secondary}
-          />
-          <Text
-            style={[
-              s.tabNavLabel,
-              { color: activeTab === "fees" ? theme.primary : theme.secondary },
-              activeTab === "fees" && s.tabNavLabelActive,
-            ]}
-          >
-            Fees
-          </Text>
-        </TouchableOpacity>
+            if (tab === "details") {
+              iconName = isActive ? "person" : "person-outline";
+              label = "Details";
+            } else if (tab === "fees") {
+              iconName = isActive ? "wallet" : "wallet-outline";
+              label = "Rent & Fees";
+              badgeCount = totalDue > 0 ? 1 : 0;
+            } else if (tab === "repairs") {
+              iconName = isActive ? "construct" : "construct-outline";
+              label = "Repairs";
+              badgeCount = openRepairsCount;
+            } else if (tab === "notices") {
+              iconName = isActive ? "notifications" : "notifications-outline";
+              label = "Notices";
+              badgeCount = visibleNotifications.length;
+            } else if (tab === "settings") {
+              iconName = isActive ? "settings" : "settings-outline";
+              label = "Settings";
+            }
 
-        <TouchableOpacity
-          style={[s.tabNavItem, activeTab === "repairs" && { borderBottomColor: theme.primary, borderBottomWidth: 2 }]}
-          onPress={() => handleTabPress("repairs")}
-        >
-          <Ionicons
-            name={activeTab === "repairs" ? "construct" : "construct-outline"}
-            size={18}
-            color={activeTab === "repairs" ? theme.primary : theme.secondary}
-          />
-          <Text
-            style={[
-              s.tabNavLabel,
-              { color: activeTab === "repairs" ? theme.primary : theme.secondary },
-              activeTab === "repairs" && s.tabNavLabelActive,
-            ]}
-          >
-            Repairs{repairs.length > 0 ? ` (${repairs.length})` : ""}
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[s.tabNavItem, activeTab === "notices" && { borderBottomColor: theme.primary, borderBottomWidth: 2 }]}
-          onPress={() => handleTabPress("notices")}
-        >
-          <Ionicons
-            name={activeTab === "notices" ? "notifications" : "notifications-outline"}
-            size={18}
-            color={activeTab === "notices" ? theme.primary : theme.secondary}
-          />
-          <Text
-            style={[
-              s.tabNavLabel,
-              { color: activeTab === "notices" ? theme.primary : theme.secondary },
-              activeTab === "notices" && s.tabNavLabelActive,
-            ]}
-          >
-            Notices{visibleNotifications.length > 0 ? ` (${visibleNotifications.length})` : ""}
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[s.tabNavItem, activeTab === "settings" && { borderBottomColor: theme.primary, borderBottomWidth: 2 }]}
-          onPress={() => handleTabPress("settings")}
-        >
-          <Ionicons
-            name={activeTab === "settings" ? "settings" : "settings-outline"}
-            size={18}
-            color={activeTab === "settings" ? theme.primary : theme.secondary}
-          />
-          <Text
-            style={[
-              s.tabNavLabel,
-              { color: activeTab === "settings" ? theme.primary : theme.secondary },
-              activeTab === "settings" && s.tabNavLabelActive,
-            ]}
-          >
-            Settings
-          </Text>
-        </TouchableOpacity>
+            return (
+              <TouchableOpacity
+                key={tab}
+                style={[
+                  s.tabPillItem,
+                  {
+                    backgroundColor: isActive
+                      ? (isDark ? "rgba(99,102,241,0.22)" : theme.primaryLight)
+                      : (isDark ? theme.surfaceSecondary : "#FFFFFF"),
+                    borderColor: isActive ? theme.primary : theme.border,
+                  },
+                ]}
+                onPress={() => handleTabPress(tab)}
+                activeOpacity={0.7}
+              >
+                <Ionicons
+                  name={iconName}
+                  size={15}
+                  color={isActive ? theme.primary : theme.secondary}
+                />
+                <Text
+                  style={[
+                    s.tabPillLabel,
+                    { color: isActive ? theme.primary : theme.secondary },
+                    isActive && s.tabPillLabelActive,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {label}
+                </Text>
+                {badgeCount > 0 && (
+                  <View
+                    style={[
+                      s.tabBadgePill,
+                      {
+                        backgroundColor: isActive
+                          ? theme.primary
+                          : tab === "fees"
+                          ? theme.danger
+                          : theme.primary,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        s.tabBadgeText,
+                        { color: "#FFFFFF" },
+                      ]}
+                    >
+                      {badgeCount}
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
       </View>
 
       {/* Main Content Area with Native Horizontal Sliding Feature */}
@@ -780,7 +928,7 @@ export function RenterPortalScreen({
           style={{ flex: 1 }}
           keyboardShouldPersistTaps="handled"
         >
-          {/* ================= TAB 1: DETAILS ================= */}
+          {/* ================= TAB 0: DETAILS (PROFILE & RESIDENCY) ================= */}
           <View style={{ width: containerWidth, flex: 1 }}>
             <ScrollView
               contentContainerStyle={s.scrollContent}
@@ -816,40 +964,6 @@ export function RenterPortalScreen({
                 </View>
               </LinearGradient>
 
-              {/* Quick Stats Grid */}
-              <View style={s.statsRow}>
-                <View
-                  style={[
-                    s.statBox,
-                    {
-                      backgroundColor: theme.card,
-                      borderColor: theme.border,
-                      borderLeftColor: totalDue > 0 ? theme.danger : theme.success,
-                    },
-                  ]}
-                >
-                  <Text style={[s.statBoxLabel, { color: theme.secondary }]}>Outstanding Due</Text>
-                  <Text style={[s.statBoxVal, { color: totalDue > 0 ? theme.danger : theme.success }]}>
-                    {money(totalDue)}
-                  </Text>
-                </View>
-                <View
-                  style={[
-                    s.statBox,
-                    {
-                      backgroundColor: theme.card,
-                      borderColor: theme.border,
-                      borderLeftColor: theme.primary,
-                    },
-                  ]}
-                >
-                  <Text style={[s.statBoxLabel, { color: theme.secondary }]}>Monthly Rent</Text>
-                  <Text style={[s.statBoxVal, { color: theme.text }]}>
-                    {money(renter?.monthlyFee || 0)}
-                  </Text>
-                </View>
-              </View>
-
               {/* Personal Details Card with Edit Action */}
               <View style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
                 <View style={[s.cardHeader, { borderBottomColor: theme.border }]}>
@@ -857,13 +971,19 @@ export function RenterPortalScreen({
                     <Ionicons name="id-card-outline" size={20} color={theme.primary} />
                     <Text style={[s.cardTitle, { color: theme.text }]}>Personal Information</Text>
                   </View>
-                  <TouchableOpacity
-                    style={[s.editProfileBtn, { backgroundColor: theme.primaryLight }]}
-                    onPress={openEditProfile}
+                  <View
+                    style={[
+                      s.editProfileBtn,
+                      {
+                        backgroundColor: isDark ? "rgba(16, 185, 129, 0.14)" : "#ECFDF5",
+                        borderWidth: 1,
+                        borderColor: isDark ? "#047857" : "#A7F3D0",
+                      },
+                    ]}
                   >
-                    <Ionicons name="pencil-outline" size={14} color={theme.primary} />
-                    <Text style={[s.editProfileBtnText, { color: theme.primary }]}>Edit Details</Text>
-                  </TouchableOpacity>
+                    <Ionicons name="lock-closed" size={13} color={theme.success} />
+                    <Text style={[s.editProfileBtnText, { color: theme.success }]}>Verified (Locked)</Text>
+                  </View>
                 </View>
 
                 <View style={[s.detailRow, { borderBottomColor: theme.border }]}>
@@ -926,13 +1046,13 @@ export function RenterPortalScreen({
               {/* Stay & Room Details Card */}
               <View style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
                 <View style={[s.cardHeader, { borderBottomColor: theme.border }]}>
-                  <Ionicons name="bed-outline" size={20} color={theme.primary} />
+                  <Ionicons name="home-outline" size={20} color={theme.primary} />
                   <Text style={[s.cardTitle, { color: theme.text }]}>Hostel & Room Details</Text>
                 </View>
 
                 <View style={[s.detailRow, { borderBottomColor: theme.border }]}>
                   <Text style={[s.detailKey, { color: theme.secondary }]}>Hostel Name</Text>
-                  <Text style={[s.detailVal, { color: theme.text }]}>{hostel?.name || "StayNexa"}</Text>
+                  <Text style={[s.detailVal, { color: theme.text }]}>{hostel?.name || "Hostella"}</Text>
                 </View>
 
                 {hostel?.address ? (
@@ -1218,11 +1338,7 @@ export function RenterPortalScreen({
 
                       <View style={s.paymentActionRow}>
                         {(() => {
-                          const proofUrl =
-                            p.proofUrl ||
-                            (p.proofUploadId
-                              ? `${API_URL}/uploads/${p.proofUploadId}/file`
-                              : null);
+                          const proofUrl = getFullProofUrl(p.proofUrl, p.proofUploadId);
 
                           return proofUrl ? (
                             <TouchableOpacity
@@ -1751,7 +1867,7 @@ export function RenterPortalScreen({
                 </View>
                 <Text style={{ fontSize: 13, color: theme.secondary, marginBottom: 14, lineHeight: 19 }}>
                   {isBiometricsSupported
-                    ? `Unlock StayNexa instantly using your device ${biometricLabel} without entering passwords repeatedly.`
+                    ? `Unlock Hostella instantly using your device ${biometricLabel} without entering passwords repeatedly.`
                     : "Biometric hardware is not available or enrolled on this device. Please set up a fingerprint or Face ID in device settings."}
                 </Text>
 
@@ -1815,7 +1931,7 @@ export function RenterPortalScreen({
                 <View style={[s.detailRow, { borderBottomColor: theme.border, borderBottomWidth: 0 }]}>
                   <Text style={[s.detailKey, { color: theme.secondary }]}>Hostel Assigned</Text>
                   <Text style={[s.detailVal, { color: theme.primary, fontWeight: "700" }]}>
-                    {hostel?.name || "StayNexa"}
+                    {hostel?.name || "Hostella"}
                   </Text>
                 </View>
 
@@ -2234,68 +2350,251 @@ function createStyles(theme: ReturnType<typeof useTheme>["colors"], isDark: bool
     container: {
       flex: 1,
     },
-    topBar: {
+    heroContainer: {
+      width: "100%",
+      overflow: "hidden",
+    },
+    heroBannerGradient: {
+      paddingTop: Platform.OS === "ios" ? 18 : 14,
+      paddingBottom: 40,
+      paddingHorizontal: 16,
+    },
+    ambientOrb: {
+      position: "absolute",
+      borderRadius: 999,
+    },
+    headerTopBar: {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-      paddingHorizontal: 22,
-      paddingTop: 16,
-      paddingBottom: 20,
-      borderBottomWidth: 1,
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: isDark ? 0.3 : 0.04,
-      shadowRadius: 10,
-      elevation: 3,
+      marginBottom: 16,
     },
-    topBarInfo: {
+    brandRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
       flex: 1,
-      marginRight: 14,
     },
-    topGreeting: {
-      fontSize: 13,
-      fontWeight: "600",
-      textTransform: "uppercase",
-      letterSpacing: 0.5,
-      opacity: 0.8,
+    brandLogoCircle: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: "rgba(59, 130, 246, 0.45)",
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: "rgba(255, 255, 255, 0.2)",
     },
-    topName: {
-      fontSize: 24,
-      fontWeight: "900",
-      letterSpacing: -0.5,
-      marginTop: 2,
+    brandTitle: {
+      fontSize: 16,
+      fontWeight: "800",
+      color: "#FFFFFF",
+      letterSpacing: -0.3,
     },
-    hostelBadge: {
+    brandSubtitle: {
+      fontSize: 11,
+      color: "rgba(255, 255, 255, 0.72)",
+      marginTop: 1,
+    },
+    heroActions: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
+    heroIconBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: "rgba(255, 255, 255, 0.15)",
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: "rgba(255, 255, 255, 0.18)",
+    },
+    activePropertyCard: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      backgroundColor: "rgba(255, 255, 255, 0.08)",
+      borderWidth: 1,
+      borderColor: "rgba(255, 255, 255, 0.15)",
+      borderRadius: 16,
+      padding: 14,
+    },
+    activePropertyLeft: {
+      flex: 1,
+      marginRight: 10,
+    },
+    activePropertyBadge: {
       flexDirection: "row",
       alignItems: "center",
       alignSelf: "flex-start",
-      paddingHorizontal: 10,
-      paddingVertical: 5,
+      backgroundColor: "rgba(16, 185, 129, 0.22)",
       borderRadius: 10,
-      marginTop: 6,
-      gap: 6,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      gap: 5,
+      marginBottom: 6,
     },
-    hostelBadgeText: {
-      fontSize: 13,
+    activeDot: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: "#10B981",
+    },
+    activeBadgeText: {
+      fontSize: 10.5,
       fontWeight: "800",
+      color: "#34D399",
       letterSpacing: 0.3,
     },
-    topActions: {
+    activePropertyName: {
+      fontSize: 16,
+      fontWeight: "800",
+      color: "#FFFFFF",
+      letterSpacing: -0.3,
+    },
+    activePropertyLocRow: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 12,
+      gap: 5,
+      marginTop: 4,
     },
-    iconBtn: {
-      width: 44,
-      height: 44,
-      borderRadius: 22,
+    activePropertyLocText: {
+      fontSize: 12,
+      color: "rgba(255, 255, 255, 0.75)",
+    },
+    activePropertyActionBox: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      backgroundColor: "rgba(255, 255, 255, 0.12)",
       alignItems: "center",
       justifyContent: "center",
+    },
+    propertyIconCircle: {
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    floatingKpiRow: {
+      flexDirection: "row",
+      gap: 10,
+      paddingHorizontal: 16,
+      marginTop: -26,
+      marginBottom: 12,
+    },
+    floatingCard: {
+      flex: 1,
+      borderRadius: 16,
+      padding: 12,
+      borderWidth: 1,
       shadowColor: "#000",
-      shadowOffset: { width: 0, height: 3 },
+      shadowOffset: { width: 0, height: 4 },
       shadowOpacity: isDark ? 0.3 : 0.05,
-      shadowRadius: 6,
+      shadowRadius: 8,
       elevation: 2,
+    },
+    floatingCardLabel: {
+      fontSize: 10.5,
+      fontWeight: "600",
+      textTransform: "uppercase",
+      letterSpacing: 0.3,
+    },
+    floatingCardValue: {
+      fontSize: 16,
+      fontWeight: "800",
+      marginTop: 4,
+      marginBottom: 6,
+    },
+    statusTag: {
+      flexDirection: "row",
+      alignItems: "center",
+      alignSelf: "flex-start",
+      paddingHorizontal: 6,
+      paddingVertical: 2.5,
+      borderRadius: 8,
+      gap: 4,
+    },
+    statusTagText: {
+      fontSize: 10,
+      fontWeight: "700",
+    },
+    quickDueBanner: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      borderRadius: 16,
+      borderWidth: 1,
+      padding: 14,
+      marginBottom: 16,
+      gap: 12,
+    },
+    quickDueBtn: {
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 10,
+    },
+    quickDueBtnText: {
+      color: "#FFFFFF",
+      fontSize: 12.5,
+      fontWeight: "800",
+    },
+    hostelInfoCard: {
+      marginTop: 18,
+      padding: 16,
+      borderRadius: 18,
+      borderWidth: 1,
+    },
+    hostelIconBox: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    hostelInfoName: {
+      fontSize: 15,
+      fontWeight: "800",
+    },
+    hostelInfoAddress: {
+      fontSize: 12.5,
+      marginTop: 2,
+    },
+    tabNavWrapper: {
+      borderBottomWidth: 1,
+      paddingVertical: 8,
+    },
+    tabScrollContent: {
+      paddingHorizontal: 12,
+      gap: 8,
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    tabPillItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 13,
+      paddingVertical: 7,
+      borderRadius: 20,
+      borderWidth: 1,
+      gap: 6,
+    },
+    tabPillLabel: {
+      fontSize: 12.5,
+      fontWeight: "600",
+    },
+    tabPillLabelActive: {
+      fontWeight: "800",
+    },
+    tabBadgePill: {
+      paddingHorizontal: 6,
+      paddingVertical: 1,
+      borderRadius: 10,
+      marginLeft: 2,
+    },
+    tabBadgeText: {
+      fontSize: 10,
+      fontWeight: "800",
     },
     tabNav: {
       flexDirection: "row",
@@ -2368,11 +2667,6 @@ function createStyles(theme: ReturnType<typeof useTheme>["colors"], isDark: bool
       borderRadius: 12,
       marginTop: 8,
       gap: 6,
-    },
-    activeDot: {
-      width: 8,
-      height: 8,
-      borderRadius: 4,
     },
     activeTagText: {
       fontSize: 12,

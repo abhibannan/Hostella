@@ -559,7 +559,7 @@ export interface PlatformConfig {
 
 let platformConfig: PlatformConfig = {
   maintenanceMode: false,
-  maintenanceNotice: "StayNexa is currently undergoing scheduled platform maintenance. Services will resume shortly.",
+  maintenanceNotice: "Hostella is currently undergoing scheduled platform maintenance. Services will resume shortly.",
   alertBanner: {
     active: false,
     title: "Scheduled Maintenance",

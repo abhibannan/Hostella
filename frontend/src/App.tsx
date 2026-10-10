@@ -611,7 +611,7 @@ function App() {
           <h1>Dashboard</h1>
 
           <p>
-            Overview of your StayNexa
+            Overview of your HostelDesk
             operations.
           </p>
         </div>
@@ -1035,7 +1035,7 @@ function App() {
               <h1>Hostels</h1>
 
               <p>
-                Manage your StayNexa hostels.
+                Manage your HostelDesk hostels.
               </p>
             </div>
           </div>
@@ -1503,7 +1503,7 @@ function App() {
     return (
       <div className="login-page" style={{ display: "flex", justifyContent: "center", alignItems: "center" }}>
         <div style={{ textAlign: "center", color: "#64748b" }}>
-          <h2 style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>StayNexa</h2>
+          <h2 style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>HostelDesk</h2>
           <p>Restoring session...</p>
         </div>
       </div>
@@ -1515,7 +1515,7 @@ function App() {
       <div className="login-page">
         <div className="login-card">
           <div className="brand">
-            StayNexa
+            HostelDesk
           </div>
 
           <h1>Portal Login</h1>
@@ -1532,7 +1532,7 @@ function App() {
             onChange={(event) =>
               setEmail(event.target.value)
             }
-            placeholder="e.g. admin@staynexa.com or 9876543210"
+            placeholder="e.g. admin@hosteldesk.com or 9876543210"
           />
 
           <label>Password</label>
@@ -1590,7 +1590,7 @@ function App() {
     <div className="app">
       <aside className="sidebar">
         <div className="sidebar-brand">
-          StayNexa
+          HostelDesk
         </div>
 
         <nav>
@@ -1707,7 +1707,7 @@ function App() {
                     )?.name ??
                     "selected hostel"
                   }`
-                : "StayNexa Admin Panel"}
+                : "HostelDesk Admin Panel"}
             </p>
           </div>
 

@@ -127,10 +127,10 @@ export async function checkAndProcessRecurringFees(): Promise<{
           await createNotification({
             userId,
             type: "FEE_DUE",
-            title: `Monthly Rent Due: ₹${monthlyFee}`,
-            message: `Your recurring monthly rent fee of ₹${monthlyFee} for ${currentMonthStr} is due on ${feeDueDate}. Please pay before the due date.`,
+            title: "Rent Fee Generated",
+            message: `Your rent fee of ₹${Number(monthlyFee).toLocaleString("en-IN")} for ${currentMonthStr} has been generated. Due date: ${feeDueDate}.`,
             hostelId,
-            entityType: "FEE",
+            entityType: "fee",
             entityId: currentFeeId,
           });
           notificationsSent++;
@@ -221,12 +221,10 @@ export async function checkAndProcessRecurringFees(): Promise<{
             await createNotification({
               userId: rData.userId,
               type: "FEE_OVERDUE",
-              title: daysOverdue === 1
-                ? `Rent Overdue: ₹${remAmount}`
-                : `Overdue Rent Notice (${daysOverdue}d): ₹${remAmount}`,
-              message: `Notice from Hostel Admin: Your fee of ₹${remAmount} for ${fData.month || "rent"} ${overdueNotice}. Please clear your payment immediately.`,
+              title: "Fee Payment Overdue!",
+              message: `Your fee of ₹${remAmount.toLocaleString("en-IN")} ${overdueNotice}. Please clear your dues immediately.`,
               hostelId: fData.hostelId || rData.hostelId,
-              entityType: "FEE",
+              entityType: "fee",
               entityId: fDoc.id,
             });
             notificationsSent++;
@@ -259,14 +257,10 @@ export async function checkAndProcessRecurringFees(): Promise<{
             await createNotification({
               userId: rData.userId,
               type: "FEE_DUE",
-              title: fDiff === 0
-                ? `Rent Due Today: ₹${remAmount}`
-                : fDiff === 1
-                ? `Rent Due Tomorrow: ₹${remAmount}`
-                : `Rent Due in ${fDiff} Days: ₹${remAmount}`,
-              message: `Reminder: Your monthly rent of ₹${remAmount} ${dueNotice}. Please clear your payment before the due date.`,
+              title: fDiff === 0 ? "Fee Due Today!" : "Fee Payment Reminder",
+              message: `Your fee of ₹${remAmount.toLocaleString("en-IN")} ${dueNotice}. Please pay on time.`,
               hostelId: fData.hostelId || rData.hostelId,
-              entityType: "FEE",
+              entityType: "fee",
               entityId: fDoc.id,
             });
             notificationsSent++;

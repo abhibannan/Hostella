@@ -316,11 +316,11 @@ export function SuperAdminModal({
 
               <View style={[styles.kpiCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 <View style={[styles.kpiIcon, { backgroundColor: "#FEF3C7" }]}>
-                  <Ionicons name="bed" size={18} color="#D97706" />
+                  <Ionicons name="people" size={18} color="#D97706" />
                 </View>
                 <Text style={[styles.kpiVal, { color: colors.text }]}>{overview.totalBeds}</Text>
                 <Text style={[styles.kpiLbl, { color: colors.secondary }]}>
-                  Beds in {overview.totalRooms} Rooms
+                  Capacity in {overview.totalRooms} Rooms
                 </Text>
               </View>
 

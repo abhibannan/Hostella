@@ -111,7 +111,7 @@ export function useNotificationSync(
       const toFire = newNotifs.slice(0, 5);
       for (const notif of toFire) {
         await scheduleLocalNotification(
-          notif.title || "StayNexa",
+          notif.title || "Hostella",
           notif.message || "You have a new notification",
           {
             notificationId: notif.id,
@@ -125,7 +125,7 @@ export function useNotificationSync(
       // If there are more than 5, show a summary
       if (newNotifs.length > 5) {
         await scheduleLocalNotification(
-          "StayNexa",
+          "Hostella",
           `You have ${newNotifs.length - 5} more new notifications`,
           { type: "SUMMARY" },
         );

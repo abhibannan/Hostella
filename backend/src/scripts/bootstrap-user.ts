@@ -2,7 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { firebaseAuth, db } from "../config/firebase.js";
 
 async function createAdmin() {
-const email = "staynexa.admin@gmail.com";
+const email = "hosteldesk.admin@gmail.com";
 
   const firebaseUser = await firebaseAuth.getUserByEmail(email);
 
@@ -13,7 +13,7 @@ const email = "staynexa.admin@gmail.com";
     .get();
 
   if (!existing.empty) {
-    console.log("StayNexa profile already exists.");
+    console.log("Hostella profile already exists.");
     console.log("Firebase UID:", firebaseUser.uid);
     return;
   }
@@ -34,7 +34,7 @@ const email = "staynexa.admin@gmail.com";
   });
 
   console.log("ADMIN profile created successfully.");
-  console.log("StayNexa user ID:", userRef.id);
+  console.log("Hostella user ID:", userRef.id);
   console.log("Firebase UID:", firebaseUser.uid);
 }
 

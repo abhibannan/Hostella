@@ -188,7 +188,7 @@ export function useExpenseActions({ selectedHostelId, token }: ExpenseActionsPro
         }
 
         const csvContent = await response.text();
-        const filename = `StayNexa_Financials_${month || "All"}_${Date.now()}.csv`;
+        const filename = `Hostella_Financials_${month || "All"}_${Date.now()}.csv`;
 
         if (Platform.OS === "web") {
           // Web download trigger

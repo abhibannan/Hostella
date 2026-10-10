@@ -28,7 +28,7 @@ export async function requireHostelAccess(
 ) {
   try {
     if (!req.authUser) {
-      res.status(401).json({ message: "StayNexa user profile required" });
+      res.status(401).json({ message: "Hostella user profile required" });
       return;
     }
 
@@ -47,11 +47,9 @@ export async function requireHostelAccess(
     }
 
     // SUPER ADMIN
-    // User restriction: "the super admin can only add admins no other operations"
+    // Super Admin has platform-wide oversight to manage staff & property assignments
     if (req.authUser.role === "SUPER_ADMIN") {
-      res.status(403).json({
-        message: "Super Admin can only add and manage administrators. Hostel operations are restricted to Hostel Admins.",
-      });
+      next();
       return;
     }
 
