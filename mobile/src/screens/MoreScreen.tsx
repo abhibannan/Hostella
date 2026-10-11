@@ -16,7 +16,6 @@ import { ThemeMode, GRADIENTS, GOLD, RADIUS, shadow } from "../constants/theme";
 import { Hostel, User } from "../types";
 import { HostellaBrand } from "../components/HostellaBrand";
 import { haptic } from "../utils/haptics";
-import { API_URL } from "../services/api";
 
 interface MoreScreenProps {
   currentUser?: User | null;
@@ -176,39 +175,6 @@ export function MoreScreen({
   onNavigateToNotifications,
 }: MoreScreenProps) {
   const { colors, isDark } = useTheme();
-  const [testingPush, setTestingPush] = useState(false);
-
-  const handleTestPushDelayed = async () => {
-    if (!token) {
-      Alert.alert("Sign In Required", "You must be signed in to test notifications.");
-      return;
-    }
-    setTestingPush(true);
-    try {
-      const res = await fetch(`${API_URL}/notifications/push-token/test`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ delaySeconds: 5 }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        Alert.alert(
-          "🔔 Test Push Scheduled!",
-          "Notification will arrive in 5 seconds.\n\n👉 Press your phone's Home button or lock your screen NOW to see it appear while the app is closed!",
-          [{ text: "OK" }],
-        );
-      } else {
-        Alert.alert("Push Test", (data as any)?.message || "Failed to schedule test push.");
-      }
-    } catch (e: any) {
-      Alert.alert("Push Test Error", e?.message || "Could not reach server.");
-    } finally {
-      setTestingPush(false);
-    }
-  };
 
   function handleLogout() {
     Alert.alert("Logout", "Are you sure you want to logout?", [
@@ -406,18 +372,7 @@ export function MoreScreen({
         />
       </Group>
 
-      <Label colors={colors}>NOTIFICATIONS & DIAGNOSTICS</Label>
-      <Group colors={colors} isDark={isDark}>
-        <Row
-          icon="notifications-outline"
-          title={testingPush ? "Scheduling Push…" : "Test Push Notification (5s Delay)"}
-          subtitle="Tap, then immediately swipe away or lock phone"
-          fg={colors.primary}
-          bg={colors.primaryLight}
-          colors={colors}
-          onPress={handleTestPushDelayed}
-        />
-      </Group>
+
 
       <Text style={[styles.versionText, { color: colors.secondary }]}>Hostella v1.0.0</Text>
     </ScrollView>

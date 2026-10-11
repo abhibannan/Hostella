@@ -29,6 +29,7 @@ import * as Clipboard from "expo-clipboard";
 import { haptic } from "../utils/haptics";
 import { SwipeableRow } from "../components/SwipeableRow";
 import { HostellaBrand } from "../components/HostellaBrand";
+import { generatePaymentHistoryPdf } from "../utils/pdfGenerator";
 
 interface PaymentsScreenProps {
   fees: Fee[];
@@ -90,6 +91,17 @@ export function getFullProofUrl(
 ): string | null {
   if (proofUrl && typeof proofUrl === "string" && proofUrl.trim().length > 0) {
     const trimmed = proofUrl.trim();
+    // Normalize localhost / 127.0.0.1 / 10.0.2.2 development URLs to live API_URL
+    if (
+      trimmed.includes("localhost:") ||
+      trimmed.includes("127.0.0.1:") ||
+      trimmed.includes("10.0.2.2:")
+    ) {
+      const match = trimmed.match(/\/uploads\/[^/]+\/file/);
+      if (match) {
+        return `${API_URL}${match[0]}`;
+      }
+    }
     if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
       return trimmed;
     }
@@ -171,7 +183,12 @@ export function PaymentsScreen(props: PaymentsScreenProps) {
   // Proof image preview modal
   const [proofPreviewUrl, setProofPreviewUrl] = useState("");
   const [proofPreviewReference, setProofPreviewReference] = useState<string | undefined>(undefined);
+  const [proofImageLoading, setProofImageLoading] = useState(false);
+  const [proofImageError, setProofImageError] = useState(false);
   const [copiedFeedback, setCopiedFeedback] = useState(false);
+
+  // PDF Export state
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
 
   // Custom reminder modal state
   const [showCustomRemindModal, setShowCustomRemindModal] = useState(false);
@@ -206,14 +223,44 @@ export function PaymentsScreen(props: PaymentsScreenProps) {
     return true;
   });
 
-  // Filtered payment proofs
+  // Filtered payment proofs (only payments with receipts or submitted as payment proofs)
   const displayedProofs = currentHostelPayments.filter((p) => {
+    const hasProof = Boolean(
+      (p.proofUrl && p.proofUrl.trim().length > 0) ||
+      (p.proofUploadId && p.proofUploadId.trim().length > 0) ||
+      p.submittedAt ||
+      (p.status && p.status !== "APPROVED")
+    );
+    if (!hasProof) return false;
+
     const st = String(p.status || "APPROVED").toUpperCase();
     if (proofFilter === "submitted") return st === "SUBMITTED" || st === "PENDING";
     if (proofFilter === "approved") return st === "APPROVED";
     if (proofFilter === "rejected") return st === "REJECTED";
     return true;
   });
+
+  const handleExportPaymentsPdf = async (targetMonth?: string) => {
+    haptic.medium();
+    setIsExportingPdf(true);
+    try {
+      await generatePaymentHistoryPdf({
+        hostelName: selectedHostel?.name || "Hostella Property",
+        hostel: selectedHostel,
+        fees: currentHostelFees,
+        payments: currentHostelPayments,
+        renters,
+        month: targetMonth,
+      });
+    } catch (err) {
+      Alert.alert(
+        "Export Failed",
+        err instanceof Error ? err.message : "Unable to generate payment details PDF. Please try again."
+      );
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
 
   function openCustomReminder(fee: Fee, renterName: string) {
     const rem = Math.max(0, Number(fee.amount || 0) - Number(fee.paidAmount || 0));
@@ -313,16 +360,34 @@ export function PaymentsScreen(props: PaymentsScreenProps) {
                 </View>
               </View>
 
-              {activeOption !== "menu" ? (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
                 <TouchableOpacity
-                  style={styles.heroMenuSwitchBtn}
-                  onPress={() => setActiveOption("menu")}
+                  style={styles.heroGlassBtn}
+                  onPress={() => handleExportPaymentsPdf()}
+                  disabled={isExportingPdf}
                   activeOpacity={0.8}
                 >
-                  <Ionicons name="grid-outline" size={14} color="#FFFFFF" />
-                  <Text style={styles.heroMenuSwitchText}>Hub</Text>
+                  {isExportingPdf ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <Ionicons name="document-text-outline" size={14} color="#FFFFFF" />
+                      <Text style={styles.heroGlassBtnText}>PDF</Text>
+                    </>
+                  )}
                 </TouchableOpacity>
-              ) : null}
+
+                {activeOption !== "menu" ? (
+                  <TouchableOpacity
+                    style={styles.heroMenuSwitchBtn}
+                    onPress={() => setActiveOption("menu")}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="grid-outline" size={14} color="#FFFFFF" />
+                    <Text style={styles.heroMenuSwitchText}>Hub</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
             </View>
 
             {/* Quick Stat Chips inside Hero */}
@@ -520,6 +585,27 @@ export function PaymentsScreen(props: PaymentsScreenProps) {
               </View>
               <Ionicons name="chevron-forward" size={18} color={colors.secondary} />
             </TouchableOpacity>
+
+            {/* Action: Download All Renters Payment PDF */}
+            <TouchableOpacity
+              style={[styles.menuActionCard, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}
+              onPress={() => handleExportPaymentsPdf()}
+              disabled={isExportingPdf}
+              activeOpacity={0.75}
+            >
+              <View style={[styles.menuActionIconBox, { backgroundColor: isDark ? "rgba(99, 102, 241, 0.2)" : "#EEF2FF" }]}>
+                {isExportingPdf ? (
+                  <ActivityIndicator size="small" color={COLORS.primary} />
+                ) : (
+                  <Ionicons name="document-text" size={18} color={COLORS.primary} />
+                )}
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={[styles.menuActionTitle, { color: colors.text }]}>Download Renters Payment PDF</Text>
+                <Text style={[styles.menuActionDesc, { color: colors.secondary }]}>Export complete financial statement & payment details</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.secondary} />
+            </TouchableOpacity>
           </View>
         ) : (
           /* ── In-Section Top Navigation Bar (When an option is open) ── */
@@ -579,6 +665,23 @@ export function PaymentsScreen(props: PaymentsScreenProps) {
               accessibilityLabel="Option Details"
             >
               <Ionicons name="information-circle-outline" size={19} color={colors.primary} />
+            </TouchableOpacity>
+
+            {/* 1-Tap PDF Statement Export Button */}
+            <TouchableOpacity
+              style={[
+                styles.infoIconBtn,
+                { backgroundColor: colors.surfaceSecondary, borderColor: colors.border, marginLeft: 8 },
+              ]}
+              onPress={() => handleExportPaymentsPdf()}
+              disabled={isExportingPdf}
+              accessibilityLabel="Download PDF Statement"
+            >
+              {isExportingPdf ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <Ionicons name="download-outline" size={18} color={colors.primary} />
+              )}
             </TouchableOpacity>
           </View>
         )}
@@ -766,20 +869,36 @@ export function PaymentsScreen(props: PaymentsScreenProps) {
 
                       if (!currentProofUrl) return null;
 
-                      const isApproved = String(feePayment?.status).toUpperCase() === "APPROVED";
+                      const feePaymentStatus = String(feePayment?.status || "").toUpperCase();
+                      const isApproved = feePaymentStatus === "APPROVED";
+                      const isRejected = feePaymentStatus === "REJECTED";
 
                       return (
                         <TouchableOpacity
                           style={[
                             styles.feeProofBanner,
                             {
-                              backgroundColor: isDark ? colors.surfaceSecondary : "#f0fdf4",
-                              borderColor: isDark ? colors.border : "#bbf7d0",
+                              backgroundColor: isDark
+                                ? colors.surfaceSecondary
+                                : isApproved
+                                ? "#f0fdf4"
+                                : isRejected
+                                ? "#fef2f2"
+                                : "#fffbeb",
+                              borderColor: isDark
+                                ? colors.border
+                                : isApproved
+                                ? "#bbf7d0"
+                                : isRejected
+                                ? "#fecaca"
+                                : "#fde68a",
                             },
                           ]}
                           onPress={() => {
                             setProofPreviewUrl(currentProofUrl);
                             setProofPreviewReference(feePayment?.reference);
+                            setProofImageLoading(true);
+                            setProofImageError(false);
                             haptic.light();
                           }}
                           activeOpacity={0.8}
@@ -794,7 +913,7 @@ export function PaymentsScreen(props: PaymentsScreenProps) {
                               <Ionicons
                                 name="image-outline"
                                 size={14}
-                                color={isApproved ? COLORS.success : COLORS.warning}
+                                color={isApproved ? COLORS.success : isRejected ? COLORS.danger : COLORS.warning}
                               />
                               <Text
                                 style={[
@@ -824,6 +943,8 @@ export function PaymentsScreen(props: PaymentsScreenProps) {
                               {
                                 backgroundColor: isApproved
                                   ? COLORS.successLight
+                                  : isRejected
+                                  ? COLORS.dangerLight
                                   : COLORS.warningLight,
                               },
                             ]}
@@ -834,11 +955,13 @@ export function PaymentsScreen(props: PaymentsScreenProps) {
                                 {
                                   color: isApproved
                                     ? COLORS.success
+                                    : isRejected
+                                    ? COLORS.danger
                                     : COLORS.warning,
                                 },
                               ]}
                             >
-                              {isApproved ? "Verified" : "Pending Review"}
+                              {isApproved ? "Verified" : isRejected ? "Declined" : "Pending Review"}
                             </Text>
                           </View>
                         </TouchableOpacity>
@@ -1058,6 +1181,8 @@ export function PaymentsScreen(props: PaymentsScreenProps) {
                           onPress={() => {
                             setProofPreviewUrl(proofImageSource);
                             setProofPreviewReference(payment.reference);
+                            setProofImageLoading(true);
+                            setProofImageError(false);
                             haptic.light();
                           }}
                           activeOpacity={0.85}
@@ -1584,11 +1709,47 @@ export function PaymentsScreen(props: PaymentsScreenProps) {
             centerContent
           >
             {proofPreviewUrl ? (
-              <Image
-                source={{ uri: proofPreviewUrl }}
-                style={styles.fullProofImage}
-                resizeMode="contain"
-              />
+              <View style={{ width: "100%", minHeight: 360, alignItems: "center", justifyContent: "center" }}>
+                {proofImageLoading && (
+                  <View style={{ position: "absolute", zIndex: 10 }}>
+                    <ActivityIndicator size="large" color="#FFFFFF" />
+                  </View>
+                )}
+                {proofImageError ? (
+                  <View style={{ alignItems: "center", justifyContent: "center", padding: 24, gap: 12 }}>
+                    <Ionicons name="alert-circle-outline" size={48} color="#EF4444" />
+                    <Text style={{ color: "#FFFFFF", fontSize: 14, fontWeight: "600", textAlign: "center" }}>
+                      Receipt photo could not be loaded.
+                    </Text>
+                    <TouchableOpacity
+                      style={{
+                        paddingHorizontal: 16,
+                        paddingVertical: 8,
+                        backgroundColor: "rgba(255,255,255,0.18)",
+                        borderRadius: 8,
+                      }}
+                      onPress={() => {
+                        setProofImageError(false);
+                        setProofImageLoading(true);
+                      }}
+                    >
+                      <Text style={{ color: "#FFFFFF", fontWeight: "700" }}>Retry</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <Image
+                    source={{ uri: proofPreviewUrl }}
+                    style={styles.fullProofImage}
+                    resizeMode="contain"
+                    onLoadStart={() => setProofImageLoading(true)}
+                    onLoadEnd={() => setProofImageLoading(false)}
+                    onError={() => {
+                      setProofImageLoading(false);
+                      setProofImageError(true);
+                    }}
+                  />
+                )}
+              </View>
             ) : null}
           </ScrollView>
 
@@ -1898,6 +2059,18 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   heroMenuSwitchText: { color: "#FFFFFF", fontSize: 12, fontWeight: "700" },
+  heroGlassBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.26)",
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: 10,
+  },
+  heroGlassBtnText: { color: "#FFFFFF", fontSize: 12, fontWeight: "700" },
   floatingKpiWrap: { paddingHorizontal: 16, marginTop: -26, zIndex: 10 },
   mainPaymentsBody: { paddingHorizontal: 16, marginTop: 10 },
 

@@ -43,19 +43,21 @@ function generatedOn(): string {
 }
 
 function getRenterName(renter: Renter): string {
-  return (
-    renter.user?.firstName
-      ? `${renter.user.firstName} ${renter.user.lastName || ""}`.trim()
-      : renter.name ||
-        renter.fullName ||
-        renter.user?.name ||
-        renter.user?.fullName ||
-        "Resident"
-  );
+  if (renter.name && renter.name.trim()) return renter.name.trim();
+  if (renter.fullName && renter.fullName.trim()) return renter.fullName.trim();
+  if (renter.user?.name && renter.user.name.trim()) return renter.user.name.trim();
+  if (renter.user?.fullName && renter.user.fullName.trim()) return renter.user.fullName.trim();
+  const first = renter.user?.firstName?.trim() || "";
+  const last = renter.user?.lastName?.trim() || "";
+  const combined = `${first} ${last}`.trim();
+  if (combined) return combined;
+  if (renter.email && renter.email.trim()) return renter.email.trim();
+  if (renter.user?.email && renter.user.email.trim()) return renter.user.email.trim();
+  return "Resident";
 }
 
 function getRenterRoom(renter: Renter): string {
-  return renter.room?.roomNumber || "—";
+  return renter.room?.roomNumber || (renter as any).roomNumber || "—";
 }
 
 const CSS_BASE = `

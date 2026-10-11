@@ -299,7 +299,7 @@ export function RentersScreen(props: RentersScreenProps) {
     haptic.medium();
     try {
       toast.info("Generating resident directory PDF...", "Exporting");
-      await exportRenterListPDF(currentHostelRenters, selectedHostel?.name || "Hostella Property");
+      await exportRenterListPDF(currentHostelRenters, selectedHostel?.name || "Hostella Property", rooms);
       toast.success("Resident directory ready to save or share!", "Exported");
     } catch {
       toast.error("Failed to generate PDF", "Export Error");

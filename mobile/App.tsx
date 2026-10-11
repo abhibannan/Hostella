@@ -694,7 +694,7 @@ function AppContent() {
             letterSpacing: 0.5,
           }}
         >
-          HostelDesk
+          Hostella
         </Text>
       </SafeAreaView>
     );
@@ -885,7 +885,7 @@ function AppContent() {
           </View>
           <Text style={[styles.maintenanceTitle, { color: colors.text }]}>Platform Under Maintenance</Text>
           <Text style={[styles.maintenanceMessage, { color: colors.secondary }]}>
-            {platformStatus.maintenanceNotice || "HostelDesk is currently undergoing scheduled platform upgrades. Services will resume shortly."}
+            {platformStatus.maintenanceNotice || "Hostella is currently undergoing scheduled platform upgrades. Services will resume shortly."}
           </Text>
           <TouchableOpacity
             style={[styles.maintenanceRefreshBtn, { backgroundColor: colors.text }]}

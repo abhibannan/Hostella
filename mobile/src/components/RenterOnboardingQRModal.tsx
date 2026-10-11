@@ -54,7 +54,7 @@ export function RenterOnboardingQRModal({
   }
 
   const hostelNameParam = hostelName ? `&hostelName=${encodeURIComponent(hostelName)}` : "";
-  const inviteUrl = `https://abhibannan.github.io/HostelDesk/?page=join&hostelId=${encodeURIComponent(hostelId)}${hostelNameParam}${roomParams}`;
+  const inviteUrl = `https://abhibannan.github.io/Hostella/?page=join&hostelId=${encodeURIComponent(hostelId)}${hostelNameParam}${roomParams}`;
 
   const handleCopyLink = async () => {
     await Clipboard.setStringAsync(inviteUrl);
