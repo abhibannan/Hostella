@@ -360,6 +360,45 @@ router.patch("/admins/:adminId/status", requireAuth, async (req, res, next) => {
   }
 });
 
+router.patch("/admins/:adminId/password", requireAuth, async (req, res, next) => {
+  try {
+    if (req.authUser?.role !== "SUPER_ADMIN") {
+      res.status(403).json({ message: "Only Super Admin can reset administrator passwords" });
+      return;
+    }
+
+    const adminId = String(req.params.adminId || "");
+    const password = String(req.body?.password || "");
+    if (!password || password.length < 6) {
+      res.status(400).json({ message: "Password must be at least 6 characters long" });
+      return;
+    }
+
+    const userRef = db.collection("users").doc(adminId);
+    const snap = await userRef.get();
+    if (!snap.exists) {
+      res.status(404).json({ message: "Administrator account not found" });
+      return;
+    }
+
+    const data = snap.data();
+    const firebaseUid = data?.firebaseUid || adminId;
+
+    await firebaseAuth.updateUser(firebaseUid, { password });
+
+    await writeAuditLog({
+      actorId: req.authUser.id,
+      action: "RESET_ADMIN_PASSWORD",
+      entityType: "USER",
+      entityId: adminId,
+    });
+
+    res.json({ message: "Password updated successfully" });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.delete("/admins/:adminId", requireAuth, async (req, res, next) => {
   try {
     if (req.authUser?.role !== "SUPER_ADMIN") {
