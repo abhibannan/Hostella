@@ -125,7 +125,13 @@ function App() {
 
   // If the user accessed the join page via QR code (using query params avoids GH pages 404)
   const queryParams = new URLSearchParams(window.location.search);
-  if (queryParams.get("page") === "join" || window.location.pathname.endsWith("/join")) {
+  if (
+    queryParams.get("page") === "join" ||
+    window.location.pathname.endsWith("/join") ||
+    window.location.pathname.endsWith("/join/") ||
+    window.location.pathname.includes("/join") ||
+    window.location.hash.includes("join")
+  ) {
     return (
       <Suspense fallback={<div className="loading-screen"><div className="loader"></div></div>}>
         <JoinPage />
@@ -611,7 +617,7 @@ function App() {
           <h1>Dashboard</h1>
 
           <p>
-            Overview of your HostelDesk
+            Overview of your Hostella
             operations.
           </p>
         </div>
@@ -1035,7 +1041,7 @@ function App() {
               <h1>Hostels</h1>
 
               <p>
-                Manage your HostelDesk hostels.
+                Manage your Hostella hostels.
               </p>
             </div>
           </div>
@@ -1503,7 +1509,7 @@ function App() {
     return (
       <div className="login-page" style={{ display: "flex", justifyContent: "center", alignItems: "center" }}>
         <div style={{ textAlign: "center", color: "#64748b" }}>
-          <h2 style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>HostelDesk</h2>
+          <h2 style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>Hostella</h2>
           <p>Restoring session...</p>
         </div>
       </div>
@@ -1515,7 +1521,7 @@ function App() {
       <div className="login-page">
         <div className="login-card">
           <div className="brand">
-            HostelDesk
+            Hostella
           </div>
 
           <h1>Portal Login</h1>
@@ -1532,7 +1538,7 @@ function App() {
             onChange={(event) =>
               setEmail(event.target.value)
             }
-            placeholder="e.g. admin@hosteldesk.com or 9876543210"
+            placeholder="e.g. admin@hostella.app or 9876543210"
           />
 
           <label>Password</label>
@@ -1590,7 +1596,7 @@ function App() {
     <div className="app">
       <aside className="sidebar">
         <div className="sidebar-brand">
-          HostelDesk
+          Hostella
         </div>
 
         <nav>
@@ -1707,7 +1713,7 @@ function App() {
                     )?.name ??
                     "selected hostel"
                   }`
-                : "HostelDesk Admin Panel"}
+                : "Hostella Admin Panel"}
             </p>
           </div>
 

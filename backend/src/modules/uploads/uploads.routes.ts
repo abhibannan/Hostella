@@ -134,7 +134,8 @@ router.post(
         );
       }
 
-      // 3. Store record in Firestore
+      // 3. Store record in Firestore (with base64 fallback for persistent durability across container restarts)
+      const shouldStoreBase64 = buffer.length <= 900 * 1024;
       const uploadRecord = {
         id: fileId,
         userId: req.authUser.id,
@@ -143,6 +144,7 @@ router.post(
         originalName: originalname,
         contentType: mimetype,
         size,
+        ...(shouldStoreBase64 ? { dataBase64: buffer.toString("base64") } : {}),
         createdAt: FieldValue.serverTimestamp(),
       };
 
@@ -204,6 +206,14 @@ router.get("/:id/file", async (req, res, next) => {
       } catch {
         // Continue to 404
       }
+    }
+
+    // 3. Check Firestore base64 backup
+    if (data?.dataBase64) {
+      const buffer = Buffer.from(data.dataBase64, "base64");
+      res.setHeader("Content-Length", buffer.length);
+      res.send(buffer);
+      return;
     }
 
     res.status(404).json({ message: "File content not found on server" });

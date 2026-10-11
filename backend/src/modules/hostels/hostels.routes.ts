@@ -296,10 +296,28 @@ router.get(
         db.collection("repairs").where("hostelId", "==", hostelId).get(),
       ]);
 
+      const defaultHost = process.env.APP_URL || "https://staynexa-1.onrender.com";
+      const host = req?.get ? req.get("host") : null;
+      const protocol = req?.protocol || (req?.secure ? "https" : "http");
+      const baseUrl = host ? `${protocol}://${host}` : defaultHost;
+
       const rooms = roomsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
       const renters = rentersSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
       const fees = feesSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-      const payments = paymentsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      const payments = paymentsSnap.docs.map((doc) => {
+        const data = doc.data();
+        const uploadId = String(data.proofUploadId || "").trim();
+        const existingUrl = data.proofUrl;
+        let proofUrl = existingUrl;
+        if (!proofUrl && uploadId) {
+          proofUrl = `${baseUrl}/api/v1/uploads/${uploadId}/file`;
+        }
+        return {
+          id: doc.id,
+          ...data,
+          ...(proofUrl ? { proofUrl } : {}),
+        };
+      });
       const repairs = repairsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
 
       res.json({ rooms, renters, fees, payments, repairs });

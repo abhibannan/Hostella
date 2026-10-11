@@ -211,7 +211,7 @@ export default function JoinPage() {
           </div>
           <h1>Registration Completed!</h1>
           <p>
-            Your resident account has been officially registered with HostelDesk. You can now open the mobile app and log in using your email and password.
+            Your resident account has been officially registered with Hostella. You can now open the mobile app and log in using your email and password.
           </p>
           <div className="room-badge">
              <span>Hostel: <strong>{hostelName || hostelId}</strong></span>
@@ -238,7 +238,7 @@ export default function JoinPage() {
         <div className="card-header">
           <div className="logo-placeholder">
             <span className="logo-icon">H</span>
-            <h2>HostelDesk</h2>
+            <h2>Hostella</h2>
           </div>
           <h1>Resident Registration</h1>
           <p>All details are mandatory. Please fill in all information below.</p>

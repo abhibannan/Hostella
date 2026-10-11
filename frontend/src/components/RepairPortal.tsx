@@ -276,7 +276,7 @@ export default function RepairPortal({ user, token, onLogout }: Props) {
           </div>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, letterSpacing: -0.5 }}>HostelDesk</h1>
+              <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, letterSpacing: -0.5 }}>Hostella</h1>
               <span
                 style={{
                   background: "#4338ca",

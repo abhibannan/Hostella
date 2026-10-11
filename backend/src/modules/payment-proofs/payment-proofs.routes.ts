@@ -335,6 +335,11 @@ router.post(
         .doc();
 
       const now = new Date().toISOString();
+      const defaultHost = process.env.APP_URL || "https://staynexa-1.onrender.com";
+      const host = req?.get ? req.get("host") : null;
+      const protocol = req?.protocol || (req?.secure ? "https" : "http");
+      const baseUrl = host ? `${protocol}://${host}` : defaultHost;
+      const proofUrl = `${baseUrl}/api/v1/uploads/${proofUploadId}/file`;
 
       const payment = {
         id: paymentRef.id,
@@ -344,6 +349,7 @@ router.post(
         amount,
         paymentDate,
         proofUploadId,
+        proofUrl,
         reference: reference ?? null,
         notes: notes ?? null,
         status: "SUBMITTED",
