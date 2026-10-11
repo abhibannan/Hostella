@@ -210,28 +210,34 @@ router.post(
         },
       });
 
-      // Auto-notify admins and repair personnel
+      // Auto-notify admins and repair personnel strictly assigned to this hostel
       try {
+        const hostelDoc = await db.collection("hostels").doc(hostelId).get();
+        const ownerId = hostelDoc.exists ? hostelDoc.data()?.ownerId : null;
+
         const [hostelAdminsSnap, repairPersonsSnap, rpUsersSnap] = await Promise.all([
           db.collection("hostelAdmins").where("hostelId", "==", hostelId).get(),
-          db.collection("repairPersons").where("status", "==", "ACTIVE").get(),
+          db.collection("repairPersons").where("hostelId", "==", hostelId).where("status", "==", "ACTIVE").get(),
           db.collection("users").where("role", "==", "REPAIR_PERSON").where("status", "==", "ACTIVE").get(),
         ]);
 
         const adminIds = hostelAdminsSnap.docs.map((d) => d.data().adminId).filter(Boolean);
+        if (ownerId && !adminIds.includes(ownerId)) {
+          adminIds.push(ownerId);
+        }
         
-        // Repair personnel active for this hostel or across portfolio
+        // Repair personnel active STRICTLY for this hostel (no bleed across different admins/hostels)
         const repairUserIds: string[] = [];
         repairPersonsSnap.docs.forEach((d) => {
           const data = d.data();
-          if (!data.hostelId || data.hostelId === hostelId) {
-            if (data.userId) repairUserIds.push(data.userId);
+          if (data.userId) {
+            repairUserIds.push(data.userId);
           }
         });
         rpUsersSnap.docs.forEach((d) => {
           const data = d.data();
           const hIds = Array.isArray(data.hostelIds) ? data.hostelIds : [];
-          if (hIds.length === 0 || hIds.includes(hostelId)) {
+          if (hIds.includes(hostelId)) {
             repairUserIds.push(d.id);
           }
         });
@@ -672,11 +678,15 @@ router.get(
   requireHostelAccess,
   async (req, res, next) => {
     try {
+      const hostelId = typeof req.params.hostelId === "string" ? req.params.hostelId : "";
       const seen = new Set<string>();
       const repairPersons: any[] = [];
 
-      // 1. Fetch from repairPersons collection
-      const rpSnapshot = await db.collection("repairPersons").get();
+      // 1. Fetch from repairPersons collection strictly for this hostel
+      const rpSnapshot = await db
+        .collection("repairPersons")
+        .where("hostelId", "==", hostelId)
+        .get();
       rpSnapshot.docs.forEach((doc) => {
         const data = doc.data();
         if (data.status === "INACTIVE") return;
@@ -690,7 +700,7 @@ router.get(
         }
       });
 
-      // 2. Also ensure any users with role REPAIR_PERSON are included
+      // 2. Also ensure any users with role REPAIR_PERSON assigned to this hostel are included
       const usersSnap = await db
         .collection("users")
         .where("role", "==", "REPAIR_PERSON")
@@ -699,6 +709,8 @@ router.get(
       usersSnap.docs.forEach((doc) => {
         const u = doc.data();
         if (u.status === "INACTIVE") return;
+        const hIds = Array.isArray(u.hostelIds) ? u.hostelIds : [];
+        if (!hIds.includes(hostelId)) return;
         const key = u.email?.toLowerCase() || doc.id;
         if (!seen.has(key)) {
           seen.add(key);
