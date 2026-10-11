@@ -19,6 +19,7 @@ export interface CreateNotificationInput {
   hostelId?: string | null;
   entityType?: string | null;
   entityId?: string | null;
+  senderId?: string | null;
 }
 
 export async function createNotification(
@@ -46,6 +47,8 @@ export async function createNotification(
     hostelId: input.hostelId ?? null,
     entityType: input.entityType ?? null,
     entityId: input.entityId ?? null,
+    senderId: input.senderId ?? null,
+    createdBy: input.senderId ?? null,
     read: false,
     readAt: null,
     createdAt: FieldValue.serverTimestamp(),
@@ -53,19 +56,21 @@ export async function createNotification(
 
   await notificationRef.set(notification);
 
-  await sendExpoPushNotifications([
-    {
-      userId: input.userId,
-      title: input.title,
-      body: input.message,
-      data: {
-        notificationId: notificationRef.id,
-        type: input.type,
-        entityType: input.entityType ?? "",
-        entityId: input.entityId ?? "",
+  if (!input.senderId || input.senderId !== input.userId) {
+    await sendExpoPushNotifications([
+      {
+        userId: input.userId,
+        title: input.title,
+        body: input.message,
+        data: {
+          notificationId: notificationRef.id,
+          type: input.type,
+          entityType: input.entityType ?? "",
+          entityId: input.entityId ?? "",
+        },
       },
-    },
-  ]);
+    ]);
+  }
 
  return {
   ...notification,

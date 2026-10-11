@@ -46,6 +46,64 @@ router.post("/push-token", requireAuth, async (req, res, next) => {
   }
 });
 
+// Debug: Check if current user has a registered push token
+router.get("/push-token-status", requireAuth, async (req, res, next) => {
+  try {
+    const snap = await db
+      .collection("pushTokens")
+      .where("userId", "==", req.authUser!.id)
+      .get();
+    res.status(200).json({
+      userId: req.authUser!.id,
+      tokenCount: snap.size,
+      tokens: snap.docs.map((d) => ({
+        id: d.id,
+        platform: d.data().platform,
+        updatedAt: d.data().updatedAt,
+        tokenPrefix: String(d.data().token || "").slice(0, 20) + "...",
+      })),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Debug: Send a test push notification to the caller's own device
+router.post("/push-token/test", requireAuth, async (req, res, next) => {
+  try {
+    const delay = Math.min(Math.max(Number(req.body?.delaySeconds || 0), 0), 30);
+    const userId = req.authUser!.id;
+
+    const sendPush = async () => {
+      await sendExpoPushNotifications([
+        {
+          userId,
+          title: "Hostella Push Alert 🔔",
+          body: delay > 0
+            ? `Push notification delivered successfully while app was closed (${delay}s delay)!`
+            : "Push notification delivered successfully!",
+          data: { type: "SYSTEM", test: "true" },
+        },
+      ]);
+    };
+
+    if (delay > 0) {
+      setTimeout(() => {
+        void sendPush().catch((err) => console.error("[TestPush] Delayed send failed:", err));
+      }, delay * 1000);
+      res.status(200).json({
+        success: true,
+        message: `Test push scheduled in ${delay} seconds. Close or lock your app now!`,
+      });
+    } else {
+      await sendPush();
+      res.status(200).json({ success: true, message: "Test push notification sent to your device." });
+    }
+  } catch (error) {
+    next(error);
+  }
+});
+
 const createNotificationSchema = z.object({
   userId: z.string().min(1),
   type: z.enum([
@@ -145,6 +203,8 @@ router.post(
         entityType:
           parsed.data.entityType ?? null,
         entityId: parsed.data.entityId ?? null,
+        senderId: req.authUser!.id,
+        createdBy: req.authUser!.id,
         read: false,
         createdAt: now,
         readAt: null,
@@ -152,14 +212,16 @@ router.post(
 
       await notificationRef.set(notification);
 
-      await sendExpoPushNotifications([
-        {
-          userId: parsed.data.userId,
-          title: parsed.data.title,
-          body: parsed.data.message,
-          data: { notificationId: notificationRef.id, type: parsed.data.type },
-        },
-      ]);
+      if (parsed.data.userId !== req.authUser!.id) {
+        await sendExpoPushNotifications([
+          {
+            userId: parsed.data.userId,
+            title: parsed.data.title,
+            body: parsed.data.message,
+            data: { notificationId: notificationRef.id, type: parsed.data.type },
+          },
+        ]);
+      }
 
       res.status(201).json({
         message: "Notification created successfully",
@@ -191,6 +253,9 @@ router.get(
         hostelId: string | null;
         entityType: string | null;
         entityId: string | null;
+        senderId?: string | null;
+        createdBy?: string | null;
+        sentByMe?: boolean;
         read: boolean;
         createdAt: string;
         readAt: string | null;
@@ -216,6 +281,15 @@ router.get(
         if (Array.isArray(data.dismissedBy) && data.dismissedBy.includes(req.authUser!.id)) {
           return false;
         }
+
+        // Never deliver a personal notification back to the user who sent it
+        if (
+          data.userId === req.authUser!.id &&
+          (data.senderId === req.authUser!.id || data.createdBy === req.authUser!.id)
+        ) {
+          return false;
+        }
+
         // Scope broadcasts to resident's hostel
         if (
           req.authUser?.role === "RENTER" &&
@@ -276,6 +350,10 @@ router.get(
 
       const notifications: NotificationItem[] = activeDocs.map((doc) => {
         const data = doc.data();
+        const isSentByMe = Boolean(
+          (data.senderId && data.senderId === req.authUser!.id) ||
+          (data.createdBy && data.createdBy === req.authUser!.id)
+        );
 
         return {
           id: doc.id,
@@ -295,6 +373,9 @@ router.get(
             data.entityId == null
               ? null
               : String(data.entityId),
+          senderId: data.senderId ? String(data.senderId) : null,
+          createdBy: data.createdBy ? String(data.createdBy) : null,
+          sentByMe: isSentByMe,
           read: Boolean(data.read),
           createdAt: String(
             data.createdAt ?? "",
@@ -623,6 +704,8 @@ router.post(
         hostelId: hostelId && hostelId !== "ALL" ? hostelId : "ALL",
         entityType: "BROADCAST",
         entityId: null,
+        senderId: req.authUser!.id,
+        createdBy: req.authUser!.id,
         read: false,
         readAt: null,
         createdAt: now,
@@ -644,6 +727,8 @@ router.post(
         const renter = renterDoc.data();
         const userId = renter.userId;
         if (!userId || seenUserIds.has(userId)) continue;
+        // The sender/admin must NOT receive push notifications for their own broadcast
+        if (userId === req.authUser!.id) continue;
         seenUserIds.add(userId);
         sentCount++;
       }
@@ -722,19 +807,23 @@ router.post(
         hostelId: fee.hostelId || null,
         entityType: "FEE",
         entityId: feeId,
+        senderId: req.authUser!.id,
+        createdBy: req.authUser!.id,
         read: false,
         readAt: null,
         createdAt: now,
       });
 
-      await sendExpoPushNotifications([
-        {
-          userId: String(renter.userId),
-          title: isOverdue ? `Overdue Fee Reminder: ₹${remainingAmount}` : `Rent Fee Reminder: ₹${remainingAmount}`,
-          body: customMessage || `Notice from Hostel Admin: Your fee of ₹${remainingAmount} for ${fee.month} is ${isOverdue ? "overdue" : "pending"}. Due date: ${fee.dueDate}. Please clear your payment promptly.`,
-          data: { type: isOverdue ? "FEE_OVERDUE" : "FEE_DUE", entityType: "FEE", entityId: String(feeId) },
-        },
-      ]);
+      if (String(renter.userId) !== req.authUser!.id) {
+        await sendExpoPushNotifications([
+          {
+            userId: String(renter.userId),
+            title: isOverdue ? `Overdue Fee Reminder: ₹${remainingAmount}` : `Rent Fee Reminder: ₹${remainingAmount}`,
+            body: customMessage || `Notice from Hostel Admin: Your fee of ₹${remainingAmount} for ${fee.month} is ${isOverdue ? "overdue" : "pending"}. Due date: ${fee.dueDate}. Please clear your payment promptly.`,
+            data: { type: isOverdue ? "FEE_OVERDUE" : "FEE_DUE", entityType: "FEE", entityId: String(feeId) },
+          },
+        ]);
+      }
 
       res.status(201).json({
         message: "Fee reminder sent successfully to the renter",
@@ -795,7 +884,8 @@ router.post(
           }
         }
 
-        if (!userId) continue;
+        // Never send reminder to the admin user who created it
+        if (!userId || userId === req.authUser!.id) continue;
 
         const remainingAmount = Number(fee.amount || 0) - Number(fee.paidAmount || 0);
         const isOverdue = fee.status === "OVERDUE" || (fee.dueDate && new Date().toISOString().slice(0, 10) > fee.dueDate);
@@ -810,6 +900,8 @@ router.post(
           hostelId: fee.hostelId || null,
           entityType: "FEE",
           entityId: feeDoc.id,
+          senderId: req.authUser!.id,
+          createdBy: req.authUser!.id,
           read: false,
           readAt: null,
           createdAt: now,

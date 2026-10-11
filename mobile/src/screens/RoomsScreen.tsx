@@ -27,6 +27,7 @@ import {
   Alert,
   FlatList,
   RefreshControl,
+  useWindowDimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -124,6 +125,13 @@ export function RoomsScreen({
   selectedHostelId,
 }: RoomsScreenProps) {
   const { colors, isDark } = useTheme();
+  const { width: screenWidth } = useWindowDimensions();
+  const numColumns = screenWidth >= 900 ? 4 : screenWidth >= 600 ? 3 : 2;
+  const gridGap = 12;
+  const availableGridWidth = Math.max(280, screenWidth - 32);
+  const roomCardWidth = Math.floor(
+    (availableGridWidth - (numColumns - 1) * gridGap) / numColumns,
+  );
 
   // ── Detail sheet state ─────────────────────────────────────────────────────
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
@@ -480,7 +488,7 @@ export function RoomsScreen({
               return (
                 <TouchableOpacity
                   key={room.id}
-                  style={[styles.roomCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                  style={[styles.roomCard, { width: roomCardWidth, backgroundColor: colors.card, borderColor: colors.border }]}
                   onPress={() => {
                     haptic.cardPress();
                     openRoomDetail(room);
@@ -1147,15 +1155,13 @@ const styles = StyleSheet.create({
   roomGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    justifyContent: "space-between",
+    gap: 12,
   },
   roomCard: {
-    width: "48%",
     borderWidth: 1,
     borderColor: COLORS.border,
     borderRadius: 16,
     padding: 14,
-    marginBottom: 12,
     backgroundColor: COLORS.card,
     shadowColor: "#000",
     shadowOpacity: 0.05,

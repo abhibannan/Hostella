@@ -1,5 +1,10 @@
 import { registerRootComponent } from 'expo';
 
+import { ensureNotificationChannels } from './src/hooks/useExpoPushNotifications';
+
+// Immediately register Android notification channels at cold startup
+void ensureNotificationChannels();
+
 // IMPORTANT: This import MUST come before registerRootComponent.
 // It defines the headless background task that handles push notifications
 // when the app is killed. TaskManager.defineTask() runs at import time.

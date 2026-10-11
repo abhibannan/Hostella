@@ -160,6 +160,9 @@ export type Notification = {
   hostelId?: string | null;
   entityType?: string | null;
   entityId?: string | null;
+  senderId?: string | null;
+  createdBy?: string | null;
+  sentByMe?: boolean;
   read: boolean;
   createdAt: string;
   readAt?: string | null;

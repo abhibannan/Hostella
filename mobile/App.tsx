@@ -31,6 +31,7 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -44,7 +45,7 @@ import { ThemeProvider, useTheme } from "./src/contexts/ThemeContext";
 
 import { Hostel, Renter, Tab } from "./src/types";
 import { dashboardFrom } from "./src/utils/formatters";
-import { API_URL, parseJsonResponse, warmupApi } from "./src/services/api";
+import { API_URL, apiRequest, parseJsonResponse, warmupApi } from "./src/services/api";
 
 // Hooks
 import { useAuth, AuthCallbacks } from "./src/hooks/useAuth";
@@ -57,7 +58,7 @@ import { usePaymentActions } from "./src/hooks/usePaymentActions";
 import { useRepairActions } from "./src/hooks/useRepairActions";
 import { useNotificationActions } from "./src/hooks/useNotificationActions";
 import { useNotificationSync } from "./src/hooks/useNotificationSync";
-import { useExpoPushNotifications } from "./src/hooks/useExpoPushNotifications";
+import { useExpoPushNotifications, getDevicePushToken } from "./src/hooks/useExpoPushNotifications";
 
 // Screens
 import { LoginScreen } from "./src/screens/LoginScreen";
@@ -121,11 +122,29 @@ function AppContent() {
   const [pageHistory, setPageHistory] = useState<Tab[]>(["dashboard"]);
   const [paymentsInitialOption, setPaymentsInitialOption] = useState<"menu" | "fees_all" | "fees_paid" | "fees_unpaid" | "proofs" | "reminders" | "expenses">("menu");
   const [showAuditModal, setShowAuditModal] = useState(false);
+  const { width: windowWidth } = useWindowDimensions();
   const [containerWidth, setContainerWidth] = useState(
-    Dimensions.get("window").width,
+    windowWidth || Dimensions.get("window").width,
   );
+
+  useEffect(() => {
+    if (windowWidth > 0 && Math.abs(windowWidth - containerWidth) > 1) {
+      setContainerWidth(windowWidth);
+    }
+  }, [windowWidth, containerWidth]);
+
   const pageScrollRef = useRef<ScrollView>(null);
   const [mountedTabs, setMountedTabs] = useState<Set<string>>(() => new Set(["dashboard"]));
+
+  // Auto-realign horizontal pager whenever screen size, orientation, or font/display scaling changes
+  useEffect(() => {
+    if (containerWidth > 0 && ADMIN_TABS.includes(page)) {
+      const targetIdx = ADMIN_TABS.indexOf(page);
+      if (targetIdx >= 0) {
+        pageScrollRef.current?.scrollTo({ x: targetIdx * containerWidth, animated: false });
+      }
+    }
+  }, [containerWidth, page]);
 
 
 
@@ -391,21 +410,52 @@ function AppContent() {
     data.notifications,
     pushNotifications.scheduleLocalNotification,
     Boolean(auth.token),
+    auth.currentUser?.id,
+    auth.currentUser?.role,
+    data.refreshNotifications,
+  );
+
+  // ── Push Token Registration ─────────────────────────────────────────────────
+  // Register on login AND every time the app comes back to the foreground.
+  // This ensures ALL user roles (renters, admins) always have a fresh FCM token
+  // stored in Firestore so backend can deliver push notifications when closed.
+  const registerPushToken = useCallback(
+    async (authToken: string) => {
+      try {
+        const deviceToken = await getDevicePushToken();
+        if (!deviceToken) {
+          console.warn("[Push] No device token — skipping registration.");
+          return;
+        }
+        await apiRequest(
+          "/notifications/push-token",
+          {
+            method: "POST",
+            body: JSON.stringify({ token: deviceToken, platform: Platform.OS }),
+          },
+          authToken,
+        );
+        console.log("[Push] Token registered ✓");
+      } catch (err) {
+        console.warn("[Push] Token registration failed:", err);
+      }
+    },
+    [],
   );
 
   useEffect(() => {
-    if (!auth.token || !auth.currentUser) return;
-    pushNotifications.getExpoPushToken().then((token) => {
-      if (token) {
-        data.request("/notifications/push-token", {
-          method: "POST",
-          body: JSON.stringify({ token, platform: Platform.OS }),
-        }).catch(() => {
-          // Non-blocking in dev
-        });
+    if (!auth.token) return;
+    // Register immediately when user logs in
+    void registerPushToken(auth.token);
+
+    // Also re-register every time the app returns to the foreground (token refresh)
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active" && auth.token) {
+        void registerPushToken(auth.token);
       }
     });
-  }, [auth.token, auth.currentUser]);
+    return () => sub.remove();
+  }, [auth.token, registerPushToken]);
 
   // ── Renter portal helpers ───────────────────────────────────────────────────
   async function handleRenterSubmitProof(params: {

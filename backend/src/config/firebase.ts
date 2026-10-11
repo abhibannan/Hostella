@@ -2,6 +2,7 @@ import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
+import { getMessaging } from "firebase-admin/messaging";
 
 import { env } from "./env.js";
 
@@ -30,3 +31,5 @@ db.settings({ ignoreUndefinedProperties: true });
 
 const bucketName = env.FIREBASE_STORAGE_BUCKET || `${env.FIREBASE_PROJECT_ID}.appspot.com`;
 export const storage = getStorage(app).bucket(bucketName);
+
+export const messaging = getMessaging(app);

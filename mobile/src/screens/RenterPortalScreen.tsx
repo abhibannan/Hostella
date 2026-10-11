@@ -170,6 +170,22 @@ export function RenterPortalScreen({
     }
   }, [containerWidth]);
 
+  React.useEffect(() => {
+    if (windowWidth > 0 && Math.abs(windowWidth - containerWidth) > 1) {
+      setContainerWidth(windowWidth);
+    }
+  }, [windowWidth, containerWidth]);
+
+  // Keep active renter tab aligned on screen rotation or size change
+  React.useEffect(() => {
+    if (containerWidth > 0) {
+      const idx = RENTER_TABS.indexOf(activeTab);
+      if (idx >= 0) {
+        pagerRef.current?.scrollTo({ x: idx * containerWidth, animated: false });
+      }
+    }
+  }, [containerWidth, activeTab]);
+
   const onPagerScrollEnd = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const x = e.nativeEvent.contentOffset.x;
     if (containerWidth > 0) {

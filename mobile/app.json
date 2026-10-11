@@ -24,10 +24,8 @@
         "USE_FINGERPRINT"
       ],
       "adaptiveIcon": {
-        "backgroundColor": "#1E1B4B",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "backgroundColor": "#19396D",
+        "foregroundImage": "./assets/android-icon-foreground.png"
       },
       "predictiveBackGestureEnabled": false
     },
@@ -45,7 +43,7 @@
         "expo-notifications",
         {
           "icon": "./assets/icon.png",
-          "color": "#2563EB",
+          "color": "#19396D",
           "defaultChannel": "default",
           "sounds": []
         }
@@ -63,7 +61,7 @@
         {
           "image": "./assets/icon.png",
           "resizeMode": "contain",
-          "backgroundColor": "#1E1B4B"
+          "backgroundColor": "#19396D"
         }
       ]
     ]

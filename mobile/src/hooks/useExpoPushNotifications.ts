@@ -1,21 +1,23 @@
 import { useCallback, useEffect } from "react";
-import { Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 import * as Notifications from "expo-notifications";
+import Constants, { ExecutionEnvironment } from "expo-constants";
+import { isRunningInExpoGo } from "expo";
 import { registerBackgroundNotificationTask } from "../services/backgroundNotificationTask";
 
-// Check if running in Expo Go client (which can't use native FCM device tokens)
-function checkIsExpoGo(): boolean {
+// Check if running in Expo Go client
+export function checkIsExpoGo(): boolean {
   try {
-    // In a standalone build, globalThis.__expo is not set to "storeClient"
-    const appOwnership = (globalThis as any).expo?.modules?.ExpoConstants?.appOwnership;
-    if (appOwnership === "expo") return true;
+    return (
+      isRunningInExpoGo() ||
+      Constants.executionEnvironment === ExecutionEnvironment.StoreClient
+    );
   } catch {
-    // fallback — assume standalone
+    return false;
   }
-  return false;
 }
 
-// Configure notification presentation when app is foregrounded or backgrounded
+// Configure notification presentation when app is foregrounded
 try {
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
@@ -30,103 +32,162 @@ try {
   console.warn("Failed to set notification handler:", e);
 }
 
+/**
+ * Create Android notification channels. Must be called before any
+ * FCM notification can be displayed on the device. Channels are
+ * created once at app startup; Android ignores duplicate calls.
+ */
+export async function ensureNotificationChannels(): Promise<void> {
+  if (Platform.OS !== "android") return;
+  try {
+    await Notifications.setNotificationChannelAsync("default", {
+      name: "Default Notifications",
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: "#2563EB",
+      sound: "default",
+      enableVibrate: true,
+      showBadge: true,
+    });
+    await Notifications.setNotificationChannelAsync("hostella", {
+      name: "Hostella Alerts",
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: "#2563EB",
+      sound: "default",
+      enableVibrate: true,
+      showBadge: true,
+    });
+  } catch (channelErr) {
+    console.warn("[Push] Error setting notification channels:", channelErr);
+  }
+}
+
+/**
+ * Get the device FCM push token. Falls back to Expo push token
+ * if native token is unavailable. Returns null in Expo Go.
+ */
+export async function getDevicePushToken(): Promise<string | null> {
+  try {
+    if (checkIsExpoGo()) {
+      console.log("[Push] Expo Go detected — push token disabled.");
+      return null;
+    }
+
+    const existing = await Notifications.getPermissionsAsync().catch(() => null);
+    const permission =
+      existing?.status === "granted"
+        ? existing
+        : await Notifications.requestPermissionsAsync({
+            ios: { allowAlert: true, allowBadge: true, allowSound: true },
+          }).catch(() => null);
+
+    if (permission?.status !== "granted") {
+      console.warn("[Push] Notification permission not granted — push token cannot be registered.");
+      return null;
+    }
+
+    // 1. Native FCM device token (standalone APK / production)
+    try {
+      const tokenResult = await Notifications.getDevicePushTokenAsync();
+      if (tokenResult?.data) {
+        console.log("[Push] Native FCM token obtained ✓");
+        return String(tokenResult.data);
+      }
+    } catch (deviceTokenErr) {
+      console.warn("[Push] getDevicePushTokenAsync failed:", deviceTokenErr);
+    }
+
+    // 2. Expo push token (dev client fallback)
+    try {
+      const projectId =
+        Constants?.expoConfig?.extra?.eas?.projectId ||
+        Constants?.easConfig?.projectId ||
+        "2b6b1dbc-f72f-421f-80dc-40137f441017";
+      const tokenResult = await Notifications.getExpoPushTokenAsync(
+        projectId ? { projectId } : undefined,
+      );
+      if (tokenResult?.data) {
+        console.log("[Push] Expo push token obtained ✓");
+        return String(tokenResult.data);
+      }
+    } catch (expoPushErr) {
+      console.warn("[Push] getExpoPushTokenAsync failed:", expoPushErr);
+    }
+
+    return null;
+  } catch (error) {
+    console.warn("[Push] Unable to get push token:", error);
+    return null;
+  }
+}
+
 export function useExpoPushNotifications(
   onNotificationResponse?: (data: Record<string, unknown>) => void
 ) {
+  // Setup channels + permissions + background task once on mount
   useEffect(() => {
-    async function configureChannelsAndPermissions() {
+    async function configure() {
       try {
-        if (Platform.OS === "android" && !checkIsExpoGo()) {
-          try {
-            await Notifications.setNotificationChannelAsync("default", {
-              name: "Default Notifications",
-              importance: Notifications.AndroidImportance.MAX,
-              vibrationPattern: [0, 250, 250, 250],
-              lightColor: "#2563EB",
-              sound: "default",
-              enableVibrate: true,
-              showBadge: true,
-            });
-            await Notifications.setNotificationChannelAsync("hostella", {
-              name: "Hostella Alerts",
-              importance: Notifications.AndroidImportance.MAX,
-              vibrationPattern: [0, 250, 250, 250],
-              lightColor: "#2563EB",
-              sound: "default",
-              enableVibrate: true,
-              showBadge: true,
-            });
-          } catch (channelErr) {
-            // Suppress Expo Go channel manager absence
-          }
-        }
+        await ensureNotificationChannels();
 
-        const existing = await Notifications.getPermissionsAsync();
-        if (existing.status !== "granted") {
+        const existing = await Notifications.getPermissionsAsync().catch(() => null);
+        if (existing?.status !== "granted") {
           await Notifications.requestPermissionsAsync({
-            ios: {
-              allowAlert: true,
-              allowBadge: true,
-              allowSound: true,
-            },
-          });
+            ios: { allowAlert: true, allowBadge: true, allowSound: true },
+          }).catch(() => null);
         }
 
-        // Register the background task so notifications arrive even when app is killed
-        await registerBackgroundNotificationTask();
+        // Register the background task (native builds only)
+        if (!checkIsExpoGo()) {
+          await registerBackgroundNotificationTask().catch(() => {});
+        }
       } catch (err) {
-        console.warn("Error configuring notifications channel/permissions:", err);
+        console.warn("[Push] Error configuring notifications:", err);
       }
     }
 
-    void configureChannelsAndPermissions();
+    void configure();
   }, []);
 
   // Listen for user tapping notifications (deep links)
   useEffect(() => {
     if (!onNotificationResponse) return;
 
-    // Check if app was opened by a notification response
-    Notifications.getLastNotificationResponseAsync().then((response) => {
-      if (response?.notification?.request?.content?.data) {
-        onNotificationResponse(
-          response.notification.request.content.data as Record<string, unknown>
-        );
-      }
-    });
+    // Check if app was opened by a notification tap
+    Notifications.getLastNotificationResponseAsync()
+      .then((response) => {
+        if (response?.notification?.request?.content?.data) {
+          onNotificationResponse(
+            response.notification.request.content.data as Record<string, unknown>
+          );
+        }
+      })
+      .catch(() => {});
 
-    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
-      const data = response.notification.request.content.data;
-      if (data) {
-        onNotificationResponse(data as Record<string, unknown>);
-      }
-    });
+    let subscription: { remove: () => void } | null = null;
+    try {
+      subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+        try {
+          const data = response.notification.request.content.data;
+          if (data) {
+            onNotificationResponse(data as Record<string, unknown>);
+          }
+        } catch {
+          // Non-blocking
+        }
+      });
+    } catch {
+      // Ignored in unsupported environments
+    }
 
-    return () => subscription.remove();
+    return () => {
+      subscription?.remove();
+    };
   }, [onNotificationResponse]);
 
-  // Returns the native FCM device token (bypasses Expo's push relay which requires
-  // deprecated Legacy FCM). Our backend sends directly via FCM V1 HTTP API.
   const getExpoPushToken = useCallback(async (): Promise<string | null> => {
-    try {
-      if (checkIsExpoGo()) {
-        return null;
-      }
-
-      const existing = await Notifications.getPermissionsAsync();
-      const permission =
-        existing.status === "granted"
-          ? existing
-          : await Notifications.requestPermissionsAsync();
-      if (permission.status !== "granted") return null;
-
-      // Use native FCM device token — works with FCM V1 directly
-      const tokenResult = await Notifications.getDevicePushTokenAsync();
-      return tokenResult.data as string;
-    } catch (error) {
-      console.warn("Unable to register for remote push notifications:", error);
-      return null;
-    }
+    return getDevicePushToken();
   }, []);
 
   const scheduleLocalNotification = useCallback(
@@ -146,7 +207,7 @@ export function useExpoPushNotifications(
           trigger: null,
         });
       } catch (error) {
-        console.warn("Unable to show local notification:", error);
+        console.warn("[Push] Unable to show local notification:", error);
       }
     },
     [],

@@ -58,13 +58,13 @@ export function useNotificationSync(
   notifications: Notification[],
   scheduleLocalNotification: ScheduleLocalFn,
   isLoggedIn: boolean,
-  hasRemotePush: boolean = false,
+  currentUserId?: string,
+  currentUserRole?: string,
+  onPollNotifications?: () => Promise<void> | void,
 ) {
   // In-memory cache of seen IDs (initialized lazily from AsyncStorage)
   const seenIdsRef = useRef<Set<string> | null>(null);
   const initPromiseRef = useRef<Promise<void> | null>(null);
-  // Track previous notification count to detect new batches
-  const prevCountRef = useRef(0);
 
   // Initialize seen IDs from storage (once)
   const ensureInit = useCallback(async () => {
@@ -79,10 +79,36 @@ export function useNotificationSync(
     await initPromiseRef.current;
   }, []);
 
+  // Active periodic sync & AppState listener to fetch fresh notifications
+  useEffect(() => {
+    if (!isLoggedIn || !onPollNotifications) return;
+
+    // Fetch immediately on mount / login
+    void onPollNotifications();
+
+    // Poll every 20 seconds while app is open
+    const interval = setInterval(() => {
+      if (AppState.currentState === "active") {
+        void onPollNotifications();
+      }
+    }, 20000);
+
+    // Also poll whenever app returns to foreground
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        void onPollNotifications();
+      }
+    });
+
+    return () => {
+      clearInterval(interval);
+      sub.remove();
+    };
+  }, [isLoggedIn, onPollNotifications]);
+
   // Core sync: compare notifications vs seen IDs, fire OS notifications for new ones
   useEffect(() => {
-    // If remote push is active, remote notifications are already delivered to OS tray.
-    if (!isLoggedIn || notifications.length === 0 || hasRemotePush) return;
+    if (!isLoggedIn || notifications.length === 0) return;
 
     let cancelled = false;
 
@@ -95,12 +121,31 @@ export function useNotificationSync(
 
       for (const notif of notifications) {
         if (!notif.id || seenIds.has(notif.id)) continue;
-        // Only push unread notifications to OS bar
-        if (notif.read) {
-          // Mark as seen even if read, so we don't re-check
+
+        // The admin / sender must NEVER receive OS notifications for notifications they sent
+        const isSentBySelf =
+          Boolean((notif as any).sentByMe) ||
+          (Boolean(currentUserId) && (
+            (notif as any).senderId === currentUserId ||
+            (notif as any).createdBy === currentUserId
+          ));
+
+        // Admins should not receive OS notifications for resident broadcasts or announcements
+        const isAdminBroadcast =
+          currentUserRole !== "RENTER" &&
+          (notif.entityType === "BROADCAST" || notif.userId === "ALL" || notif.type === "ANNOUNCEMENT");
+
+        if (isSentBySelf || isAdminBroadcast) {
           seenIds.add(notif.id);
           continue;
         }
+
+        // Only push unread notifications to OS bar
+        if (notif.read) {
+          seenIds.add(notif.id);
+          continue;
+        }
+
         newNotifs.push(notif);
         seenIds.add(notif.id);
       }
@@ -138,7 +183,14 @@ export function useNotificationSync(
     return () => {
       cancelled = true;
     };
-  }, [notifications, isLoggedIn, scheduleLocalNotification, ensureInit]);
+  }, [
+    notifications,
+    isLoggedIn,
+    currentUserId,
+    currentUserRole,
+    scheduleLocalNotification,
+    ensureInit,
+  ]);
 
   // Clear seen IDs on logout
   useEffect(() => {

@@ -12,6 +12,7 @@ import {
   RefreshControl,
   Image,
   TouchableOpacity,
+  useWindowDimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -109,6 +110,15 @@ export function DashboardScreen({
   const { colors, isDark } = useTheme();
   const toast = useToast();
   const [refreshing, setRefreshing] = useState(false);
+  const { width: screenWidth } = useWindowDimensions();
+  const isTabletOrWide = screenWidth >= 600;
+  const glanceColumns = isTabletOrWide ? 4 : 2;
+  const glanceGap = 10;
+  const availableContentWidth = Math.max(280, screenWidth - 32);
+  const glanceCardWidth = Math.floor(
+    (availableContentWidth - (glanceColumns - 1) * glanceGap) / glanceColumns,
+  );
+  const quickCellWidth = isTabletOrWide ? "12.5%" : "25%";
 
   const handleRefresh = async () => {
     haptic.light();
@@ -426,7 +436,7 @@ export function DashboardScreen({
               {quickActions.map((a) => (
                 <AnimatedPressable
                   key={a.id}
-                  containerStyle={styles.quickCell}
+                  containerStyle={[styles.quickCell, { width: quickCellWidth }]}
                   style={{ alignItems: "center" }}
                   scaleTo={0.9}
                   onPress={a.onPress}
@@ -448,13 +458,13 @@ export function DashboardScreen({
           </View>
         </Reveal>
 
-        {/* ── At a Glance (2x2 Matching Mockup) ── */}
+        {/* ── At a Glance (Responsive Grid) ── */}
         <Reveal delay={280}>
           <SectionTitle title="At a Glance" />
           <View style={styles.atAGlanceGrid}>
             {/* Card 1: Total Rooms */}
             <Pressable
-              style={[styles.glanceCard, { backgroundColor: colors.card, borderColor: colors.border }, shadow(1, isDark)]}
+              style={[styles.glanceCard, { width: glanceCardWidth, backgroundColor: colors.card, borderColor: colors.border }, shadow(1, isDark)]}
               onPress={() => onNavigate?.("rooms")}
             >
               <View style={styles.glanceHeader}>
@@ -475,7 +485,7 @@ export function DashboardScreen({
 
             {/* Card 2: Total Renters */}
             <Pressable
-              style={[styles.glanceCard, { backgroundColor: colors.card, borderColor: colors.border }, shadow(1, isDark)]}
+              style={[styles.glanceCard, { width: glanceCardWidth, backgroundColor: colors.card, borderColor: colors.border }, shadow(1, isDark)]}
               onPress={() => onNavigate?.("renters")}
             >
               <View style={styles.glanceHeader}>
@@ -494,9 +504,9 @@ export function DashboardScreen({
               </View>
             </Pressable>
 
-            {/* Card 3: Available Rooms (eliminates repetition of floating Collected card) */}
+            {/* Card 3: Available Rooms */}
             <Pressable
-              style={[styles.glanceCard, { backgroundColor: colors.card, borderColor: colors.border }, shadow(1, isDark)]}
+              style={[styles.glanceCard, { width: glanceCardWidth, backgroundColor: colors.card, borderColor: colors.border }, shadow(1, isDark)]}
               onPress={() => onNavigate?.("rooms")}
             >
               <View style={styles.glanceHeader}>
@@ -519,7 +529,7 @@ export function DashboardScreen({
 
             {/* Card 4: Pending Repairs */}
             <Pressable
-              style={[styles.glanceCard, { backgroundColor: colors.card, borderColor: colors.border }, shadow(1, isDark)]}
+              style={[styles.glanceCard, { width: glanceCardWidth, backgroundColor: colors.card, borderColor: colors.border }, shadow(1, isDark)]}
               onPress={() => onNavigate?.("repairs")}
             >
               <View style={styles.glanceHeader}>
@@ -759,14 +769,12 @@ const styles = StyleSheet.create({
   mainBodyContent: { paddingHorizontal: 16, marginTop: 14 },
 
   // At a Glance
-  atAGlanceGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", marginTop: 2 },
+  atAGlanceGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 2 },
   glanceCard: {
-    width: "48.5%",
     borderRadius: 18,
     borderWidth: 1,
     padding: 12,
     minHeight: 90,
-    marginBottom: 10,
     justifyContent: "space-between",
   },
   glanceHeader: { flexDirection: "row", alignItems: "center", gap: 6 },

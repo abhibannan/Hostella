@@ -87,6 +87,7 @@ export interface HostelDataActions {
   refreshHostelData: (hostelId?: string) => Promise<void>;
   refreshDashboardOnly: () => Promise<void>;
   refreshTab: (tab: Tab) => Promise<void>;
+  refreshNotifications: () => Promise<void>;
   loadRenterData: (
     token: string,
     hostelId: string,
@@ -460,6 +461,23 @@ export function useHostelData(): HostelDataState & HostelDataActions {
     [],
   );
 
+  const refreshNotifications = useCallback(async () => {
+    if (!token) return;
+    try {
+      const url = selectedHostelId
+        ? `${API_URL}/notifications/me?hostelId=${encodeURIComponent(selectedHostelId)}`
+        : `${API_URL}/notifications/me`;
+      const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (resp.ok) {
+        const notifData = await jsonResponse(resp);
+        const fetchedNotifs = listFrom<Notification>(notifData, "notifications");
+        setNotifications(fetchedNotifs);
+      }
+    } catch {
+      // Non-blocking silent poll
+    }
+  }, [token, selectedHostelId]);
+
   const resetAllData = useCallback(() => {
     setDashboard(EMPTY_DASHBOARD);
     setHostels([]);
@@ -499,6 +517,7 @@ export function useHostelData(): HostelDataState & HostelDataActions {
     refreshHostelData,
     refreshDashboardOnly,
     refreshTab,
+    refreshNotifications,
     loadRenterData,
     request,
     setToken,

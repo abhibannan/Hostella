@@ -1,6 +1,4 @@
-import { createSign } from "node:crypto";
-import { db } from "../config/firebase.js";
-import { env } from "../config/env.js";
+import { db, messaging } from "../config/firebase.js";
 
 type PushMessage = {
   userId: string;
@@ -9,116 +7,130 @@ type PushMessage = {
   data?: Record<string, string>;
 };
 
-type FcmTokenRecord = {
+type PushTokenRecord = {
   token: string;
   userId: string;
 };
 
-// ── FCM V1 OAuth2 token cache ─────────────────────────────────────────────────
-
-let cachedFcmToken: { value: string; expiresAt: number } | null = null;
-
-function createServiceAccountJWT(): string {
-  const now = Math.floor(Date.now() / 1000);
-  const header = Buffer.from(JSON.stringify({ alg: "RS256", typ: "JWT" })).toString("base64url");
-  const payload = Buffer.from(
-    JSON.stringify({
-      iss: env.FIREBASE_CLIENT_EMAIL,
-      sub: env.FIREBASE_CLIENT_EMAIL,
-      aud: "https://oauth2.googleapis.com/token",
-      iat: now,
-      exp: now + 3600,
-      scope: "https://www.googleapis.com/auth/firebase.messaging",
-    })
-  ).toString("base64url");
-  const sign = createSign("RSA-SHA256");
-  sign.update(`${header}.${payload}`);
-  const sig = sign.sign(env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n"), "base64url");
-  return `${header}.${payload}.${sig}`;
+// Validates both Expo Push Tokens and native FCM device tokens
+export function isExpoPushToken(value: string): boolean {
+  return typeof value === "string" && value.trim().length > 20;
 }
 
-async function getFcmAccessToken(): Promise<string> {
-  const now = Date.now();
-  if (cachedFcmToken && cachedFcmToken.expiresAt > now + 60_000) return cachedFcmToken.value;
-  const jwt = createServiceAccountJWT();
-  const resp = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion: jwt,
-    }),
-  });
-  if (!resp.ok) throw new Error(`FCM token error: ${await resp.text()}`);
-  const data = (await resp.json()) as { access_token: string; expires_in: number };
-  cachedFcmToken = { value: data.access_token, expiresAt: now + data.expires_in * 1000 };
-  return cachedFcmToken.value;
-}
-
-// ── FCM V1 send ───────────────────────────────────────────────────────────────
-
-const FCM_SEND_URL = `https://fcm.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/messages:send`;
-
-async function sendFcmV1(
+/**
+ * Sends notification via Expo Push API for ExponentPushToken[...] tokens
+ */
+async function sendExpoPushNotification(
   token: string,
   title: string,
   body: string,
   data: Record<string, string> = {}
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; dead?: boolean }> {
   try {
-    const accessToken = await getFcmAccessToken();
-    const resp = await fetch(FCM_SEND_URL, {
+    const stringData = Object.fromEntries(
+      Object.entries(data).map(([k, v]) => [k, String(v ?? "")])
+    );
+    const resp = await fetch("https://exp.host/--/api/v2/push/send", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+      headers: {
+        Accept: "application/json",
+        "Accept-Encoding": "gzip, deflate",
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({
-        message: {
-          token,
-          notification: { title, body },
-          android: {
-            priority: "high",
-            ttl: "86400s", // Keep message for 24h if device is offline
-            notification: {
-              channelId: "default",
-              sound: "default",
-              defaultSound: true,
-              defaultVibrateTimings: true,
-              priority: "MAX" as any,
-              visibility: "PUBLIC" as any,
-            },
-          },
-          apns: {
-            headers: {
-              "apns-priority": "10",                // Immediate delivery
-              "apns-push-type": "alert",            // Required for visible notifications
-            },
-            payload: {
-              aps: {
-                alert: { title, body },
-                sound: "default",
-                badge: 1,
-                "content-available": 1,             // Wake app for background processing
-                "interruption-level": "time-sensitive",
-                "mutable-content": 1,
-              },
-            },
-          },
-          data,
-        },
+        to: token,
+        title,
+        body,
+        sound: "default",
+        channelId: "default",
+        priority: "high",
+        data: stringData,
       }),
     });
+
     if (!resp.ok) {
-      const r = (await resp.json()) as { error?: { message?: string; status?: string } };
-      return { success: false, error: `${r?.error?.status}: ${r?.error?.message}` };
+      const text = await resp.text();
+      return { success: false, error: text };
     }
+
+    const json = (await resp.json()) as any;
+    const ticket = json?.data;
+    if (ticket && Array.isArray(ticket) ? ticket[0]?.status === "error" : ticket?.status === "error") {
+      const errInfo = Array.isArray(ticket) ? ticket[0] : ticket;
+      const isDead = errInfo?.details?.error === "DeviceNotRegistered";
+      return { success: false, error: errInfo?.message || "Expo delivery failed", dead: isDead };
+    }
+
     return { success: true };
-  } catch (err) {
-    return { success: false, error: String(err) };
+  } catch (err: any) {
+    return { success: false, error: err?.message || String(err) };
   }
 }
 
-// Native FCM tokens are long strings; keep this for backwards compat callers
-export function isExpoPushToken(value: string): boolean {
-  return value?.length > 20;
+/**
+ * Sends notification via Google Firebase Admin Messaging for native FCM device tokens
+ */
+async function sendNativeFcm(
+  token: string,
+  title: string,
+  body: string,
+  data: Record<string, string> = {}
+): Promise<{ success: boolean; error?: string; dead?: boolean }> {
+  try {
+    const stringData = Object.fromEntries(
+      Object.entries(data).map(([k, v]) => [k, String(v ?? "")])
+    );
+    // Explicitly add title, message, and channelId to data payload
+    // so ExpoFirebaseMessagingService can present notifications when app is closed/killed
+    stringData.title = title;
+    stringData.message = body;
+    stringData.channelId = "default";
+
+    await messaging.send({
+      token,
+      notification: { title, body },
+      data: stringData,
+      android: {
+        priority: "high",
+        ttl: 86400 * 1000,
+        notification: {
+          channelId: "default",
+          sound: "default",
+          defaultSound: true,
+          defaultVibrateTimings: true,
+          priority: "max",
+          visibility: "public",
+        },
+      },
+      apns: {
+        headers: {
+          "apns-priority": "10",
+          "apns-push-type": "alert",
+        },
+        payload: {
+          aps: {
+            alert: { title, body },
+            sound: "default",
+            badge: 1,
+            contentAvailable: true,
+          },
+        },
+      },
+    });
+
+    return { success: true };
+  } catch (err: any) {
+    const errMsg = err?.message || String(err);
+    const code = err?.code;
+    const isDead =
+      code === "messaging/registration-token-not-registered" ||
+      code === "messaging/invalid-registration-token" ||
+      errMsg.includes("UNREGISTERED") ||
+      errMsg.includes("NOT_FOUND") ||
+      errMsg.includes("NotRegistered") ||
+      errMsg.includes("SenderId mismatch");
+    return { success: false, error: errMsg, dead: isDead };
+  }
 }
 
 export async function sendExpoPushNotifications(
@@ -128,7 +140,7 @@ export async function sendExpoPushNotifications(
 
   const messageByUser = new Map(messages.map((message) => [message.userId, message]));
   const userIds = [...messageByUser.keys()];
-  const tokens: FcmTokenRecord[] = [];
+  const tokens: PushTokenRecord[] = [];
   const seen = new Set<string>();
 
   for (let i = 0; i < userIds.length; i += 10) {
@@ -148,7 +160,7 @@ export async function sendExpoPushNotifications(
   }
 
   if (!tokens.length) {
-    console.log("[FCM] No push tokens found for:", userIds);
+    console.log("[Push] No registered push tokens found for users:", userIds);
     return;
   }
 
@@ -156,20 +168,31 @@ export async function sendExpoPushNotifications(
   await Promise.all(
     tokens.map(async ({ token, userId }) => {
       const msg = messageByUser.get(userId)!;
-      const result = await sendFcmV1(token, msg.title, msg.body, msg.data ?? {});
+      const isExpoToken =
+        token.startsWith("ExponentPushToken[") || token.startsWith("ExpoPushToken[");
+
+      const result = isExpoToken
+        ? await sendExpoPushNotification(token, msg.title, msg.body, msg.data ?? {})
+        : await sendNativeFcm(token, msg.title, msg.body, msg.data ?? {});
+
       if (!result.success) {
-        console.error(`[FCM] Failed → ${userId}: ${result.error}`);
-        if (result.error?.includes("UNREGISTERED") || result.error?.includes("INVALID_ARGUMENT")) {
+        console.error(`[Push] Failed → ${userId}: ${result.error}`);
+        if (result.dead) {
           deadTokens.push(token);
         }
       } else {
-        console.log(`[FCM] Delivered → ${userId} ✓`);
+        console.log(
+          `[Push] Delivered → ${userId} ✓ (${isExpoToken ? "Expo Push SDK" : "Native FCM V1"})`,
+        );
       }
-    })
+    }),
   );
 
   for (const dead of deadTokens) {
-    db.collection("pushTokens").where("token", "==", dead).get()
-      .then((s) => s.docs.forEach((d) => d.ref.delete())).catch(() => {});
+    db.collection("pushTokens")
+      .where("token", "==", dead)
+      .get()
+      .then((s) => s.docs.forEach((d) => d.ref.delete()))
+      .catch(() => {});
   }
 }

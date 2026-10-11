@@ -15,6 +15,7 @@ import {
   StatusBar,
   Animated,
   Dimensions,
+  useWindowDimensions,
   Switch,
   Easing,
 } from "react-native";
@@ -79,7 +80,7 @@ export function SuperAdminScreen({
 }: SuperAdminScreenProps) {
   const { isDark, toggleTheme } = useTheme();
   const insets = useSafeAreaInsets();
-  const screenWidth = Dimensions.get("window").width;
+  const { width: screenWidth } = useWindowDimensions();
 
   const topInset = Math.max(
     insets.top,
