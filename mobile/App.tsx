@@ -83,6 +83,7 @@ import { ToastProvider, useToast } from "./src/contexts/ToastContext";
 import { OfflineBanner } from "./src/components/OfflineBanner";
 import { flushOfflineQueue } from "./src/services/offlineQueue";
 import { AuditLogModal } from "./src/components/AuditLogModal";
+import { IntroVideoScreen } from "./src/components/IntroVideoScreen";
 
 // Components
 import { BottomTab } from "./src/components/common";
@@ -1547,6 +1548,8 @@ function AppContent() {
 // Root
 // ─────────────────────────────────────────────────────────────────────────────
 export default function App() {
+  const [introVideoFinished, setIntroVideoFinished] = useState(false);
+
   return (
     <ErrorBoundary>
       <SafeAreaProvider>
@@ -1554,6 +1557,9 @@ export default function App() {
           <ToastProvider>
             <AppContent />
             <ThemedAlertModal />
+            {!introVideoFinished && (
+              <IntroVideoScreen onFinish={() => setIntroVideoFinished(true)} />
+            )}
           </ToastProvider>
         </ThemeProvider>
       </SafeAreaProvider>

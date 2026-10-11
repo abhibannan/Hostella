@@ -63,7 +63,8 @@
           "resizeMode": "contain",
           "backgroundColor": "#19396D"
         }
-      ]
+      ],
+      "expo-video"
     ]
   }
 }
