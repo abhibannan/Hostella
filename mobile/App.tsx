@@ -168,7 +168,11 @@ function AppContent() {
 
   useEffect(() => {
     void fetchPlatformStatus();
-    const interval = setInterval(fetchPlatformStatus, 25000);
+    const interval = setInterval(() => {
+      if (AppState.currentState === "active") {
+        void fetchPlatformStatus();
+      }
+    }, 120000);
     return () => clearInterval(interval);
   }, [fetchPlatformStatus]);
 
@@ -309,7 +313,9 @@ function AppContent() {
       onHostelsLoaded: (hostels: Hostel[], token: string) => {
         data.setHostels(hostels);
         data.setToken(token);
-        data.setSelectedHostelId(hostels[0]?.id || "");
+        if (hostels.length > 0) {
+          data.setSelectedHostelId((prev) => prev || hostels[0].id);
+        }
       },
       onDashboardLoaded: (dashData: unknown) => {
         data.setDashboard(dashboardFrom(dashData));
@@ -336,6 +342,13 @@ function AppContent() {
   const auth = useAuth(authCallbacks);
   // Wire the ref once auth is available
   setCurrentRenterDocRef.current = auth.setCurrentRenterDoc;
+
+  // Keep data layer token in sync with auth token
+  useEffect(() => {
+    if (auth.token) {
+      data.setToken(auth.token);
+    }
+  }, [auth.token, data]);
 
   // Auto-refresh the active tab data silently in background when switching tabs
   useEffect(() => {
@@ -568,20 +581,26 @@ function AppContent() {
     warmupApi();
   }, []);
 
+  const isHostelStaff =
+    auth.currentUser?.role === "ADMIN" ||
+    auth.currentUser?.role === "PARTNER" ||
+    (auth.currentUser?.role as any) === "WARDEN";
 
   useEffect(() => {
     if (!auth.token || !data.selectedHostelId) return;
-    if (auth.currentUser?.role !== "ADMIN") return; // Super Admin & Renters don't load admin hostel data
+    if (!isHostelStaff) return; // Super Admin & Renters don't load admin hostel data
     void data.refreshAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auth.token, data.selectedHostelId, auth.currentUser?.role]);
 
   useEffect(() => {
     if (!auth.token || !data.selectedHostelId) return;
-    if (auth.currentUser?.role !== "ADMIN") return;
+    if (!isHostelStaff) return;
     const timer = setInterval(() => {
-      void data.refreshHostelData(data.selectedHostelId);
-    }, 30000);
+      if (AppState.currentState === "active") {
+        void data.refreshHostelData(data.selectedHostelId);
+      }
+    }, 60000);
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auth.token, data.selectedHostelId, auth.currentUser?.role]);
@@ -598,7 +617,7 @@ function AppContent() {
               auth.setCurrentRenterDoc,
             );
           }
-        } else if (auth.currentUser?.role === "ADMIN") {
+        } else if (isHostelStaff) {
           void data.refreshHostelData(data.selectedHostelId);
         }
       }
@@ -1060,7 +1079,7 @@ function AppContent() {
 
   const isAdminRole =
     auth.currentUser?.role === "ADMIN" ||
-    auth.currentUser?.role === "SUPER_ADMIN" ||
+    auth.currentUser?.role === "PARTNER" ||
     (auth.currentUser?.role as any) === "WARDEN";
 
   if (isAdminRole) {
@@ -1344,9 +1363,10 @@ function AppContent() {
                 <HostelsScreen
                   hostels={data.hostels}
                   selectedHostelId={data.selectedHostelId}
+                  currentUser={auth.currentUser}
                   onSelectHostel={(id) => {
                     data.setSelectedHostelId(id);
-                    void data.refreshHostelData(id);
+                    void data.refreshHostelData(id, true);
                     setPage("dashboard");
                   }}
                   onRefresh={() => void data.refreshAll()}

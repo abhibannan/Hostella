@@ -86,12 +86,12 @@ export function useNotificationSync(
     // Fetch immediately on mount / login
     void onPollNotifications();
 
-    // Poll every 20 seconds while app is open
+    // Poll every 45 seconds while app is open
     const interval = setInterval(() => {
       if (AppState.currentState === "active") {
         void onPollNotifications();
       }
-    }, 20000);
+    }, 45000);
 
     // Also poll whenever app returns to foreground
     const sub = AppState.addEventListener("change", (state) => {

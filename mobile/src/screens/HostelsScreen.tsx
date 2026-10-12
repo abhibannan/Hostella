@@ -15,7 +15,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
-import { Hostel } from "../types";
+import { Hostel, Partner, User } from "../types";
 import { Header, EmptyState } from "../components/common";
 import { HostellaBrand } from "../components/HostellaBrand";
 import { COLORS } from "../constants/theme";
@@ -25,6 +25,7 @@ import { haptic } from "../utils/haptics";
 interface HostelsScreenProps {
   hostels: Hostel[];
   selectedHostelId: string;
+  currentUser?: User | null;
   onSelectHostel: (hostelId: string) => void;
   onRefresh: () => void;
   request?: <T>(path: string, options?: RequestInit) => Promise<T>;
@@ -36,12 +37,119 @@ const PROPERTY_TYPES = ["Boys Hostel", "Girls Hostel", "Co-Living", "PG", "Apart
 export function HostelsScreen({
   hostels,
   selectedHostelId,
+  currentUser,
   onSelectHostel,
   onRefresh,
   request,
   onBack,
 }: HostelsScreenProps) {
   const { colors, isDark } = useTheme();
+
+  const isPartner = currentUser?.role === "PARTNER";
+  const isAdmin = currentUser?.role === "ADMIN" || currentUser?.role === "SUPER_ADMIN";
+
+  // Partner management modal state
+  const [partnerHostel, setPartnerHostel] = useState<Hostel | null>(null);
+  const [partners, setPartners] = useState<Partner[]>([]);
+  const [loadingPartners, setLoadingPartners] = useState(false);
+  const [showAddPartnerForm, setShowAddPartnerForm] = useState(false);
+  const [partnerName, setPartnerName] = useState("");
+  const [partnerEmail, setPartnerEmail] = useState("");
+  const [partnerPhone, setPartnerPhone] = useState("");
+  const [partnerPassword, setPartnerPassword] = useState("");
+  const [savingPartner, setSavingPartner] = useState(false);
+  const [deletingPartnerId, setDeletingPartnerId] = useState<string | null>(null);
+
+  const loadPartners = useCallback(
+    async (hostelId: string) => {
+      if (!request) return;
+      setLoadingPartners(true);
+      try {
+        const res = await request<{ partners: Partner[] }>(`/hostels/${hostelId}/partners`);
+        setPartners(res?.partners || []);
+      } catch (err: any) {
+        Alert.alert("Error", err.message || "Failed to load partners");
+      } finally {
+        setLoadingPartners(false);
+      }
+    },
+    [request],
+  );
+
+  const openPartnerModal = (hostel: Hostel) => {
+    setPartnerHostel(hostel);
+    setShowAddPartnerForm(false);
+    setPartnerName("");
+    setPartnerEmail("");
+    setPartnerPhone("");
+    setPartnerPassword("");
+    void loadPartners(hostel.id);
+  };
+
+  const handleAddPartner = async () => {
+    if (!partnerHostel || !request) return;
+    if (!partnerName.trim() || !partnerEmail.trim() || !partnerPassword.trim()) {
+      Alert.alert("Required Fields", "Please enter partner name, email, and password.");
+      return;
+    }
+    if (partnerPassword.length < 6) {
+      Alert.alert("Password Too Short", "Password must be at least 6 characters.");
+      return;
+    }
+
+    setSavingPartner(true);
+    try {
+      await request(`/hostels/${partnerHostel.id}/partners`, {
+        method: "POST",
+        body: JSON.stringify({
+          name: partnerName.trim(),
+          email: partnerEmail.trim().toLowerCase(),
+          phone: partnerPhone.trim() || undefined,
+          password: partnerPassword,
+        }),
+      });
+      Alert.alert("Success", "Partner added successfully!");
+      setPartnerName("");
+      setPartnerEmail("");
+      setPartnerPhone("");
+      setPartnerPassword("");
+      setShowAddPartnerForm(false);
+      void loadPartners(partnerHostel.id);
+    } catch (err: any) {
+      Alert.alert("Failed to Add Partner", err.message || "Could not add partner");
+    } finally {
+      setSavingPartner(false);
+    }
+  };
+
+  const handleRemovePartner = (partner: Partner) => {
+    if (!partnerHostel || !request) return;
+    Alert.alert(
+      "Remove Partner",
+      `Are you sure you want to remove ${partner.name || partner.email} as a partner for this hostel?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: async () => {
+            setDeletingPartnerId(partner.id);
+            try {
+              await request(`/hostels/${partnerHostel.id}/partners/${partner.id}`, {
+                method: "DELETE",
+              });
+              Alert.alert("Success", "Partner removed successfully");
+              void loadPartners(partnerHostel.id);
+            } catch (err: any) {
+              Alert.alert("Error", err.message || "Failed to remove partner");
+            } finally {
+              setDeletingPartnerId(null);
+            }
+          },
+        },
+      ],
+    );
+  };
 
   // Add hostel modal state
   const [showAddModal, setShowAddModal] = useState(false);
@@ -58,6 +166,11 @@ export function HostelsScreen({
   const currentHostel = hostels.find((h) => h.id === selectedHostelId) || hostels[0];
 
   async function handleCreateHostel() {
+    if (isPartner) {
+      Alert.alert("Permission Denied", "Partners cannot add properties.");
+      return;
+    }
+
     if (!name.trim()) {
       Alert.alert("Missing Name", "Please enter a hostel or property name.");
       return;
@@ -196,17 +309,24 @@ export function HostelsScreen({
               </View>
             </View>
 
-            <TouchableOpacity
-              style={styles.heroAddBtn}
-              onPress={() => {
-                haptic.medium();
-                setShowAddModal(true);
-              }}
-              activeOpacity={0.85}
-            >
-              <Ionicons name="add" size={17} color="#FFFFFF" />
-              <Text style={styles.heroAddBtnText}>Add Property</Text>
-            </TouchableOpacity>
+            {isPartner ? (
+              <View style={[styles.heroPartnerChip]}>
+                <Ionicons name="shield-checkmark" size={13} color="#FBBF24" />
+                <Text style={styles.heroPartnerChipText}>Partner Access</Text>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={styles.heroAddBtn}
+                onPress={() => {
+                  haptic.medium();
+                  setShowAddModal(true);
+                }}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="add" size={17} color="#FFFFFF" />
+                <Text style={styles.heroAddBtnText}>Add Property</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* Stats Chips inside Hero */}
@@ -301,6 +421,30 @@ export function HostelsScreen({
                     </Text>
                   </View>
                 ) : null}
+
+                {isAdmin && (
+                  <View style={{ marginTop: 8, flexDirection: "row", justifyContent: "flex-end" }}>
+                    <TouchableOpacity
+                      style={[
+                        styles.managePartnersBtn,
+                        {
+                          backgroundColor: isDark ? "rgba(59, 130, 246, 0.16)" : "#EFF6FF",
+                          borderColor: isDark ? "rgba(59, 130, 246, 0.35)" : "#BFDBFE",
+                        },
+                      ]}
+                      onPress={() => {
+                        haptic.medium();
+                        openPartnerModal(currentHostel);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="people" size={14} color={colors.primary} />
+                      <Text style={[styles.managePartnersBtnText, { color: colors.primary }]}>
+                        Manage Partners
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
               </View>
             </View>
           </View>
@@ -417,6 +561,30 @@ export function HostelsScreen({
                       </View>
                     ) : null}
                   </View>
+
+                  {isAdmin && (
+                    <View style={{ marginTop: 8, flexDirection: "row" }}>
+                      <TouchableOpacity
+                        style={[
+                          styles.managePartnersBtn,
+                          {
+                            backgroundColor: isDark ? "rgba(59, 130, 246, 0.16)" : "#EFF6FF",
+                            borderColor: isDark ? "rgba(59, 130, 246, 0.35)" : "#BFDBFE",
+                          },
+                        ]}
+                        onPress={() => {
+                          haptic.medium();
+                          openPartnerModal(hostel);
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name="people-outline" size={13} color={colors.primary} />
+                        <Text style={[styles.managePartnersBtnText, { color: colors.primary }]}>
+                          Partners
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
                 </View>
 
                 <View style={styles.hostelRightAction}>
@@ -628,6 +796,252 @@ export function HostelsScreen({
               </View>
             </View>
           </ScrollView>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* ── Manage Partners Modal ────────────────────────────────────────── */}
+      <Modal visible={partnerHostel !== null} transparent animationType="slide">
+        <KeyboardAvoidingView
+          style={styles.modalBackdrop}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
+          <View
+            style={[
+              styles.modalCard,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+                borderWidth: isDark ? 1 : 0,
+                maxHeight: "88%",
+              },
+            ]}
+          >
+            {/* Modal Header */}
+            <View style={styles.modalHeader}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
+                <View style={[styles.modalHeaderIcon, { backgroundColor: colors.primaryLight }]}>
+                  <Ionicons name="people" size={18} color={colors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.modalTitle, { color: colors.text }]} numberOfLines={1}>
+                    Hostel Partners
+                  </Text>
+                  <Text style={[styles.modalSubtitle, { color: colors.secondary }]} numberOfLines={1}>
+                    {partnerHostel?.name}
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                onPress={() => {
+                  setPartnerHostel(null);
+                  setShowAddPartnerForm(false);
+                }}
+                hitSlop={8}
+              >
+                <Ionicons name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Info Notice Banner */}
+            <View
+              style={[
+                styles.partnerInfoBanner,
+                {
+                  backgroundColor: isDark ? "rgba(59, 130, 246, 0.12)" : "#EFF6FF",
+                  borderColor: isDark ? "rgba(59, 130, 246, 0.3)" : "#BFDBFE",
+                },
+              ]}
+            >
+              <Ionicons name="information-circle-outline" size={16} color={colors.primary} />
+              <Text style={[styles.partnerInfoBannerText, { color: colors.text }]}>
+                Partners have full access to manage rooms, renters, fees, payments, and repairs for this hostel only. They cannot create new properties.
+              </Text>
+            </View>
+
+            {/* Actions Bar */}
+            <View style={styles.partnerSectionHeader}>
+              <Text style={[styles.partnerSectionTitle, { color: colors.secondary }]}>
+                ASSIGNED PARTNERS ({partners.length})
+              </Text>
+              {!showAddPartnerForm && (
+                <TouchableOpacity
+                  style={[styles.addPartnerToggleBtn, { backgroundColor: colors.primaryLight }]}
+                  onPress={() => {
+                    haptic.light();
+                    setShowAddPartnerForm(true);
+                  }}
+                >
+                  <Ionicons name="add" size={15} color={colors.primary} />
+                  <Text style={[styles.addPartnerToggleText, { color: colors.primary }]}>
+                    Add Partner
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Scrollable Content: Add Form + Partners List */}
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{ paddingBottom: 20 }}
+            >
+              {showAddPartnerForm && (
+                <View
+                  style={[
+                    styles.addPartnerFormCard,
+                    {
+                      backgroundColor: colors.surfaceSecondary,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                >
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <Text style={[styles.addPartnerFormHeading, { color: colors.text }]}>
+                      New Partner Account
+                    </Text>
+                    <TouchableOpacity onPress={() => setShowAddPartnerForm(false)}>
+                      <Ionicons name="close" size={18} color={colors.secondary} />
+                    </TouchableOpacity>
+                  </View>
+
+                  <Text style={[styles.inputLabel, { color: colors.text }]}>Full Name *</Text>
+                  <TextInput
+                    style={[styles.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.text }]}
+                    value={partnerName}
+                    onChangeText={setPartnerName}
+                    placeholder="e.g. Rahul Sharma"
+                    placeholderTextColor={colors.secondary}
+                  />
+
+                  <Text style={[styles.inputLabel, { color: colors.text }]}>Email Address *</Text>
+                  <TextInput
+                    style={[styles.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.text }]}
+                    value={partnerEmail}
+                    onChangeText={setPartnerEmail}
+                    placeholder="partner@example.com"
+                    placeholderTextColor={colors.secondary}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                  />
+
+                  <Text style={[styles.inputLabel, { color: colors.text }]}>Phone Number (Optional)</Text>
+                  <TextInput
+                    style={[styles.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.text }]}
+                    value={partnerPhone}
+                    onChangeText={setPartnerPhone}
+                    placeholder="e.g. +91 9876543210"
+                    placeholderTextColor={colors.secondary}
+                    keyboardType="phone-pad"
+                  />
+
+                  <Text style={[styles.inputLabel, { color: colors.text }]}>Login Password * (Min 6 chars)</Text>
+                  <TextInput
+                    style={[styles.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.text }]}
+                    value={partnerPassword}
+                    onChangeText={setPartnerPassword}
+                    placeholder="Enter partner password"
+                    placeholderTextColor={colors.secondary}
+                    secureTextEntry
+                  />
+
+                  <View style={styles.addPartnerActionsRow}>
+                    <TouchableOpacity
+                      style={[styles.cancelBtn, { borderColor: colors.border }]}
+                      onPress={() => setShowAddPartnerForm(false)}
+                      disabled={savingPartner}
+                    >
+                      <Text style={[styles.cancelBtnText, { color: colors.secondary }]}>Cancel</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.saveBtn, { backgroundColor: colors.primary }]}
+                      onPress={handleAddPartner}
+                      disabled={savingPartner}
+                    >
+                      {savingPartner ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      ) : (
+                        <Text style={styles.saveBtnText}>Save Partner</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+
+              {loadingPartners ? (
+                <View style={{ paddingVertical: 30, alignItems: "center" }}>
+                  <ActivityIndicator size="small" color={colors.primary} />
+                  <Text style={{ marginTop: 8, color: colors.secondary, fontSize: 13 }}>
+                    Loading partners...
+                  </Text>
+                </View>
+              ) : partners.length === 0 ? (
+                <View style={styles.emptyPartnersBox}>
+                  <Ionicons name="people-outline" size={32} color={colors.secondary} />
+                  <Text style={[styles.emptyPartnersTitle, { color: colors.text }]}>
+                    No Partners Added
+                  </Text>
+                  <Text style={[styles.emptyPartnersSub, { color: colors.secondary }]}>
+                    Add co-owners or staff partners to manage this property together.
+                  </Text>
+                </View>
+              ) : (
+                partners.map((p) => {
+                  const isDeleting = deletingPartnerId === p.id;
+                  return (
+                    <View
+                      key={p.id}
+                      style={[
+                        styles.partnerItemCard,
+                        {
+                          backgroundColor: colors.surfaceSecondary,
+                          borderColor: colors.border,
+                        },
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.partnerAvatarBox,
+                          { backgroundColor: colors.primaryLight },
+                        ]}
+                      >
+                        <Text style={[styles.partnerAvatarText, { color: colors.primary }]}>
+                          {(p.name?.[0] || p.email?.[0] || "P").toUpperCase()}
+                        </Text>
+                      </View>
+
+                      <View style={{ flex: 1, marginLeft: 10 }}>
+                        <Text style={[styles.partnerItemName, { color: colors.text }]}>
+                          {p.name}
+                        </Text>
+                        <Text style={[styles.partnerItemEmail, { color: colors.secondary }]} numberOfLines={1}>
+                          {p.email}
+                        </Text>
+                        {p.phone ? (
+                          <Text style={[styles.partnerItemPhone, { color: colors.secondary }]}>
+                            {p.phone}
+                          </Text>
+                        ) : null}
+                      </View>
+
+                      <TouchableOpacity
+                        style={styles.deletePartnerBtn}
+                        onPress={() => handleRemovePartner(p)}
+                        disabled={isDeleting}
+                        hitSlop={8}
+                      >
+                        {isDeleting ? (
+                          <ActivityIndicator size="small" color={colors.danger} />
+                        ) : (
+                          <Ionicons name="trash-outline" size={18} color={colors.danger} />
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })
+              )}
+            </ScrollView>
+          </View>
         </KeyboardAvoidingView>
       </Modal>
     </ScrollView>
@@ -1054,5 +1468,141 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
     color: "#FFFFFF",
+  },
+  heroPartnerChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: "rgba(245, 158, 11, 0.22)",
+    borderWidth: 1,
+    borderColor: "rgba(245, 158, 11, 0.4)",
+  },
+  heroPartnerChipText: {
+    color: "#FBBF24",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  managePartnersBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  managePartnersBtnText: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  partnerInfoBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginBottom: 14,
+  },
+  partnerInfoBannerText: {
+    fontSize: 12,
+    lineHeight: 16,
+    flex: 1,
+  },
+  partnerSectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  partnerSectionTitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+  },
+  addPartnerToggleBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  addPartnerToggleText: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  addPartnerFormCard: {
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 14,
+  },
+  addPartnerFormHeading: {
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  addPartnerActionsRow: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 10,
+    marginTop: 14,
+  },
+  emptyPartnersBox: {
+    alignItems: "center",
+    paddingVertical: 24,
+    paddingHorizontal: 16,
+  },
+  emptyPartnersTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  emptyPartnersSub: {
+    fontSize: 12,
+    textAlign: "center",
+    lineHeight: 17,
+  },
+  partnerItemCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginBottom: 8,
+  },
+  partnerAvatarBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  partnerAvatarText: {
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  partnerItemName: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  partnerItemEmail: {
+    fontSize: 11,
+    marginTop: 1,
+  },
+  partnerItemPhone: {
+    fontSize: 11,
+    marginTop: 1,
+  },
+  deletePartnerBtn: {
+    padding: 6,
+  },
+  modalSubtitle: {
+    fontSize: 12,
+    marginTop: 2,
   },
 });

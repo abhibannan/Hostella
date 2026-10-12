@@ -122,7 +122,7 @@ export function useOfflineSync() {
 
     const interval = setInterval(() => {
       void checkNetworkStatus();
-    }, 15000);
+    }, 60000);
 
     return () => {
       listeners.delete(handler);

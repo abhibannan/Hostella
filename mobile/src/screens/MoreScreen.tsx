@@ -206,6 +206,7 @@ export function MoreScreen({
 
   const roleDisplayName = currentUser?.role === "SUPER_ADMIN" ? "Super Admin" :
                           currentUser?.role === "ADMIN" ? "Hostel Admin" :
+                          currentUser?.role === "PARTNER" ? "Hostel Partner" :
                           currentUser?.role === "REPAIR_PERSON" ? "Repair Tech" :
                           currentUser?.role === "RENTER" ? "Renter" :
                           "User";

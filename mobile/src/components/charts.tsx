@@ -299,10 +299,13 @@ export function MonthOverMonthCard({
 }) {
   const { colors, isDark } = useTheme();
 
-  const diff = thisMonthAmount - lastMonthAmount;
+  const current = Number(thisMonthAmount) || 0;
+  const previous = Number(lastMonthAmount) || 0;
+  const diff = current - previous;
   const percentChange =
-    lastMonthAmount > 0 ? (diff / lastMonthAmount) * 100 : thisMonthAmount > 0 ? 100 : 0;
+    previous > 0 ? (diff / previous) * 100 : current > 0 ? 100 : 0;
   const isPositive = diff >= 0;
+  const formattedPercent = Number.isFinite(percentChange) ? Math.abs(percentChange).toFixed(1) : "0.0";
 
   return (
     <View
@@ -319,9 +322,9 @@ export function MonthOverMonthCard({
           Month-over-Month Growth
         </Text>
         <Text style={[styles.momValue, { color: colors.text }]}>
-          ₹{thisMonthAmount.toLocaleString()}{" "}
+          ₹{current.toLocaleString()}{" "}
           <Text style={{ fontSize: 11, fontWeight: "400", color: colors.secondary }}>
-            vs ₹{lastMonthAmount.toLocaleString()} last mo.
+            vs ₹{previous.toLocaleString()} last mo.
           </Text>
         </Text>
       </View>
@@ -351,7 +354,7 @@ export function MonthOverMonthCard({
             { color: isPositive ? "#15803D" : "#B91C1C" },
           ]}
         >
-          {`${isPositive ? "+" : ""}${percentChange.toFixed(1)}%`}
+          {`${isPositive ? "+" : "-"}${formattedPercent}%`}
         </Text>
       </View>
     </View>

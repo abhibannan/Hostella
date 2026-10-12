@@ -112,8 +112,20 @@ export type User = {
   pincode?: string | null;
   emergencyContactName?: string | null;
   emergencyContactPhone?: string | null;
-  role: "SUPER_ADMIN" | "ADMIN" | "RENTER" | "REPAIR_PERSON";
+  role: "SUPER_ADMIN" | "ADMIN" | "RENTER" | "REPAIR_PERSON" | "PARTNER";
   status?: string;
+};
+
+export type Partner = {
+  id: string;
+  hostelId: string;
+  userId: string;
+  name: string;
+  email: string;
+  phone?: string | null;
+  status: "ACTIVE" | "INACTIVE";
+  assignedAt: string;
+  createdAt?: string;
 };
 
 export type PlatformOverview = {
@@ -166,6 +178,25 @@ export type Notification = {
   read: boolean;
   createdAt: string;
   readAt?: string | null;
+};
+
+export type SmsMessage = {
+  id: string;
+  hostelId: string;
+  renterId?: string | null;
+  userId?: string | null;
+  recipientPhone: string;
+  recipientName?: string | null;
+  message: string;
+  senderId: string;
+  status: "PENDING" | "SENT" | "DELIVERED" | "FAILED" | "QUEUED";
+  type: "BROADCAST" | "DIRECT" | "FEE_REMINDER" | "OVERDUE_ALERT" | "ANNOUNCEMENT" | "CUSTOM";
+  smsProvider?: "TWILIO" | "FAST2SMS" | "MSG91" | "MOCK" | "CUSTOM";
+  providerMessageId?: string | null;
+  failureReason?: string | null;
+  sentAt?: string | null;
+  createdAt: string;
+  metadata?: Record<string, any>;
 };
 
 export type Repair = {

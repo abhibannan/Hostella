@@ -21,7 +21,9 @@
         "VIBRATE",
         "RECEIVE_BOOT_COMPLETED",
         "USE_BIOMETRIC",
-        "USE_FINGERPRINT"
+        "USE_FINGERPRINT",
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT"
       ],
       "adaptiveIcon": {
         "backgroundColor": "#19396D",
@@ -34,7 +36,7 @@
     },
     "extra": {
       "eas": {
-        "projectId": "2b6b1dbc-f72f-421f-80dc-40137f441017"
+        "projectId": "05a70581-92f4-4f67-987d-8262fc949ca5"
       }
     },
     "plugins": [

@@ -17,6 +17,7 @@ import { dashboardFrom, listFrom } from "../utils/formatters";
 
 // ── SWR-style AsyncStorage cache helpers ────────────────────────────────────
 const CACHE_KEY = "@hosteldesk_hostel_cache";
+const hostelCacheKey = (hId: string) => `@hosteldesk_hostel_cache_${hId}`;
 
 interface CachedData {
   hostels?: Hostel[];
@@ -30,21 +31,27 @@ interface CachedData {
   ts?: number; // timestamp
 }
 
-async function readCache(): Promise<CachedData | null> {
+async function readCache(specificHostelId?: string): Promise<CachedData | null> {
   try {
-    const raw = await AsyncStorage.getItem(CACHE_KEY);
+    const key = specificHostelId ? hostelCacheKey(specificHostelId) : CACHE_KEY;
+    const raw = await AsyncStorage.getItem(key);
+    if (!raw && specificHostelId) {
+      const primaryRaw = await AsyncStorage.getItem(CACHE_KEY);
+      return primaryRaw ? JSON.parse(primaryRaw) : null;
+    }
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
   }
 }
 
-async function writeCache(data: CachedData): Promise<void> {
+async function writeCache(data: CachedData, hostelId?: string): Promise<void> {
   try {
-    await AsyncStorage.setItem(
-      CACHE_KEY,
-      JSON.stringify({ ...data, ts: Date.now() }),
-    );
+    const payload = JSON.stringify({ ...data, ts: Date.now() });
+    await AsyncStorage.setItem(CACHE_KEY, payload);
+    if (hostelId) {
+      await AsyncStorage.setItem(hostelCacheKey(hostelId), payload);
+    }
   } catch {
     // Silent fail – cache is best-effort
   }
@@ -76,7 +83,7 @@ export interface HostelDataState {
 
 export interface HostelDataActions {
   setHostels: (h: Hostel[]) => void;
-  setSelectedHostelId: (id: string) => void;
+  setSelectedHostelId: (id: string | ((prev: string) => string)) => void;
   setDashboard: (d: Dashboard) => void;
   setFees: (f: Fee[]) => void;
   setPayments: (p: Payment[]) => void;
@@ -84,7 +91,7 @@ export interface HostelDataActions {
   setNotifications: (n: Notification[]) => void;
   resetAllData: () => void;
   refreshAll: () => Promise<void>;
-  refreshHostelData: (hostelId?: string) => Promise<void>;
+  refreshHostelData: (hostelId?: string, force?: boolean) => Promise<void>;
   refreshDashboardOnly: () => Promise<void>;
   refreshTab: (tab: Tab) => Promise<void>;
   refreshNotifications: () => Promise<void>;
@@ -99,8 +106,9 @@ export interface HostelDataActions {
   setToken: (t: string | null) => void;
 }
 
-export function useHostelData(): HostelDataState & HostelDataActions {
-  const [token, setToken] = useState<string | null>(null);
+export function useHostelData(authToken?: string | null): HostelDataState & HostelDataActions {
+  const [internalToken, setToken] = useState<string | null>(null);
+  const token = authToken || internalToken;
   const [dashboard, setDashboard] = useState<Dashboard>(EMPTY_DASHBOARD);
   const [hostels, setHostels] = useState<Hostel[]>([]);
   const [selectedHostelId, setSelectedHostelIdState] = useState("");
@@ -115,7 +123,9 @@ export function useHostelData(): HostelDataState & HostelDataActions {
   const refreshBusy = useRef(false);
   const cacheHydrated = useRef(false);
   const lastFetchedHostel = useRef<Record<string, number>>({});
+  const lastTabFetched = useRef<Record<string, number>>({});
   const HOSTEL_DATA_TTL_MS = 60 * 1000;
+  const TAB_TTL_MS = 25 * 1000; // 25s throttle per tab to eliminate redundant network hits on tab switching
 
   // ── SWR: Hydrate from AsyncStorage cache on first mount ──────────────────
   useEffect(() => {
@@ -135,19 +145,25 @@ export function useHostelData(): HostelDataState & HostelDataActions {
     })();
   }, []);
 
-  const setSelectedHostelId = useCallback((id: string) => {
+  const setSelectedHostelId = useCallback((idOrFn: string | ((prev: string) => string)) => {
     setSelectedHostelIdState((prev) => {
-      if (prev !== id) {
-        // Immediately clear previous hostel data so Hostel A data never bleeds into Hostel B
-        setRooms([]);
-        setRenters([]);
-        setFees([]);
-        setPayments([]);
-        setRepairs([]);
-        setNotifications([]);
-        setDashboard(EMPTY_DASHBOARD);
+      const nextId = typeof idOrFn === "function" ? idOrFn(prev) : idOrFn;
+      if (!nextId) return prev;
+      if (prev && prev !== nextId) {
+        // When switching between two different non-empty hostels, attempt instant hydration from target cache
+        void (async () => {
+          const cached = await readCache(nextId);
+          if (cached && cached.selectedHostelId === nextId) {
+            if (cached.rooms?.length) setRooms(cached.rooms);
+            if (cached.renters?.length) setRenters(cached.renters);
+            if (cached.fees?.length) setFees(cached.fees);
+            if (cached.payments?.length) setPayments(cached.payments);
+            if (cached.repairs?.length) setRepairs(cached.repairs);
+            if (cached.dashboard) setDashboard(cached.dashboard);
+          }
+        })();
       }
-      return id;
+      return nextId;
     });
   }, []);
 
@@ -238,17 +254,34 @@ export function useHostelData(): HostelDataState & HostelDataActions {
               setFees(fetchedFees);
               setPayments(fetchedPayments);
               setRepairs(fetchedRepairs);
-              setNotifications([]);
-              await refreshDashboardOnly(hostelId);
-              writeCache({
-                hostels,
-                selectedHostelId: hostelId,
-                rooms: fetchedRooms,
-                renters: fetchedRenters,
-                fees: fetchedFees,
-                payments: fetchedPayments,
-                repairs: fetchedRepairs,
-              });
+
+              if (snap.dashboard) {
+                setDashboard(dashboardFrom(snap.dashboard));
+              } else {
+                await refreshDashboardOnly(hostelId);
+              }
+
+              const now = Date.now();
+              lastTabFetched.current["dashboard"] = now;
+              lastTabFetched.current["rooms"] = now;
+              lastTabFetched.current["renters"] = now;
+              lastTabFetched.current["payments"] = now;
+              lastTabFetched.current["fees"] = now;
+              lastTabFetched.current["repairs"] = now;
+
+              writeCache(
+                {
+                  hostels,
+                  selectedHostelId: hostelId,
+                  rooms: fetchedRooms,
+                  renters: fetchedRenters,
+                  fees: fetchedFees,
+                  payments: fetchedPayments,
+                  repairs: fetchedRepairs,
+                  ...(snap.dashboard ? { dashboard: dashboardFrom(snap.dashboard) } : {}),
+                },
+                hostelId,
+              );
             }
           }
         } catch {
@@ -256,57 +289,88 @@ export function useHostelData(): HostelDataState & HostelDataActions {
         }
 
         if (!usedSnapshot) {
-          const [roomData, renterData, feeData, paymentData, repairData, notifData] =
-            await Promise.all([
-              fetch(`${API_URL}/hostels/${hostelId}/rooms`, { headers }).then(jsonResponse),
-              fetch(`${API_URL}/hostels/${hostelId}/renters`, { headers }).then(jsonResponse),
-              fetch(`${API_URL}/hostels/${hostelId}/fees`, { headers }).then(jsonResponse),
-              fetch(`${API_URL}/hostels/${hostelId}/payments`, { headers }).then(jsonResponse),
-              fetch(`${API_URL}/hostels/${hostelId}/repairs`, { headers })
-                .then(jsonResponse)
-                .catch(() => ({ repairs: [] })),
-              fetch(`${API_URL}/notifications/me?hostelId=${hostelId}`, { headers })
-                .then(jsonResponse)
-                .catch(() => ({ notifications: [] })),
-            ]);
+          const results = await Promise.allSettled([
+            fetch(`${API_URL}/hostels/${hostelId}/rooms`, { headers }).then(jsonResponse),
+            fetch(`${API_URL}/hostels/${hostelId}/renters`, { headers }).then(jsonResponse),
+            fetch(`${API_URL}/hostels/${hostelId}/fees`, { headers }).then(jsonResponse),
+            fetch(`${API_URL}/hostels/${hostelId}/payments`, { headers }).then(jsonResponse),
+            fetch(`${API_URL}/hostels/${hostelId}/repairs`, { headers }).then(jsonResponse),
+            fetch(`${API_URL}/notifications/me?hostelId=${encodeURIComponent(hostelId)}`, { headers }).then(jsonResponse),
+          ]);
 
-          // Filter strictly to current hostelId to guarantee complete data isolation
-          const fetchedRooms = listFrom<Room>(roomData, "rooms").filter(
-            (r) => !r.hostelId || r.hostelId === hostelId,
-          );
-          const fetchedRenters = listFrom<Renter>(renterData, "renters").filter(
-            (r) => !r.hostelId || r.hostelId === hostelId,
-          );
-          const fetchedFees = listFrom<Fee>(feeData, "fees").filter(
-            (f) => !f.hostelId || f.hostelId === hostelId,
-          );
-          const fetchedPayments = listFrom<Payment>(paymentData, "payments").filter(
-            (p) => !p.hostelId || p.hostelId === hostelId,
-          );
-          const fetchedRepairs = listFrom<Repair>(repairData, "repairs").filter(
-            (rp) => !rp.hostelId || rp.hostelId === hostelId,
-          );
-          const fetchedNotifs = listFrom<Notification>(notifData, "notifications");
+          const roomData = results[0].status === "fulfilled" ? results[0].value : null;
+          const renterData = results[1].status === "fulfilled" ? results[1].value : null;
+          const feeData = results[2].status === "fulfilled" ? results[2].value : null;
+          const paymentData = results[3].status === "fulfilled" ? results[3].value : null;
+          const repairData = results[4].status === "fulfilled" ? results[4].value : null;
+          const notifData = results[5].status === "fulfilled" ? results[5].value : null;
 
-          setRooms(fetchedRooms);
-          setRenters(fetchedRenters);
-          setFees(fetchedFees);
-          setPayments(fetchedPayments);
-          setRepairs(fetchedRepairs);
-          setNotifications(fetchedNotifs);
+          let updatedRooms = rooms;
+          let updatedRenters = renters;
+          let updatedFees = fees;
+          let updatedPayments = payments;
+          let updatedRepairs = repairs;
+
+          if (roomData) {
+            const fetchedRooms = listFrom<Room>(roomData, "rooms").filter(
+              (r) => !r.hostelId || r.hostelId === hostelId,
+            );
+            setRooms(fetchedRooms);
+            updatedRooms = fetchedRooms;
+          }
+
+          if (renterData) {
+            const fetchedRenters = listFrom<Renter>(renterData, "renters").filter(
+              (r) => !r.hostelId || r.hostelId === hostelId,
+            );
+            setRenters(fetchedRenters);
+            updatedRenters = fetchedRenters;
+          }
+
+          if (feeData) {
+            const fetchedFees = listFrom<Fee>(feeData, "fees").filter(
+              (f) => !f.hostelId || f.hostelId === hostelId,
+            );
+            setFees(fetchedFees);
+            updatedFees = fetchedFees;
+          }
+
+          if (paymentData) {
+            const fetchedPayments = listFrom<Payment>(paymentData, "payments").filter(
+              (p) => !p.hostelId || p.hostelId === hostelId,
+            );
+            setPayments(fetchedPayments);
+            updatedPayments = fetchedPayments;
+          }
+
+          if (repairData) {
+            const fetchedRepairs = listFrom<Repair>(repairData, "repairs").filter(
+              (rp) => !rp.hostelId || rp.hostelId === hostelId,
+            );
+            setRepairs(fetchedRepairs);
+            updatedRepairs = fetchedRepairs;
+          }
+
+          if (notifData) {
+            const fetchedNotifs = listFrom<Notification>(notifData, "notifications");
+            setNotifications(fetchedNotifs);
+          }
 
           await refreshDashboardOnly(hostelId);
 
           // ── SWR: Persist fresh data to AsyncStorage cache ─────────────────
-          writeCache({
-            hostels,
-            selectedHostelId: hostelId,
-            rooms: fetchedRooms,
-            renters: fetchedRenters,
-            fees: fetchedFees,
-            payments: fetchedPayments,
-            repairs: fetchedRepairs,
-          });
+          writeCache(
+            {
+              hostels,
+              selectedHostelId: hostelId,
+              rooms: updatedRooms,
+              renters: updatedRenters,
+              fees: updatedFees,
+              payments: updatedPayments,
+              repairs: updatedRepairs,
+            },
+            hostelId,
+          );
         }
       } catch (err) {
         console.warn("Failed to refresh hostel data:", err);
@@ -314,20 +378,25 @@ export function useHostelData(): HostelDataState & HostelDataActions {
         refreshBusy.current = false;
       }
     },
-    [token, selectedHostelId, refreshDashboardOnly, hostels, rooms.length],
+    [token, selectedHostelId, refreshDashboardOnly, hostels, rooms, renters, fees, payments, repairs],
   );
 
   const tabRefreshBusy = useRef<Record<string, boolean>>({});
 
   const refreshTab = useCallback(
-    async (tabKey: Tab) => {
+    async (tabKey: Tab, force = false) => {
       if (!token || !selectedHostelId || tabRefreshBusy.current[tabKey]) return;
+      const now = Date.now();
+      if (!force && lastTabFetched.current[tabKey] && now - lastTabFetched.current[tabKey] < TAB_TTL_MS) {
+        return;
+      }
       tabRefreshBusy.current[tabKey] = true;
       const headers = { Authorization: `Bearer ${token}` };
 
       try {
         if (tabKey === "dashboard") {
           await refreshDashboardOnly(selectedHostelId);
+          lastTabFetched.current[tabKey] = Date.now();
         } else if (tabKey === "rooms") {
           const res = await fetch(`${API_URL}/hostels/${selectedHostelId}/rooms`, { headers });
           if (res.ok) {
@@ -336,6 +405,7 @@ export function useHostelData(): HostelDataState & HostelDataActions {
               (r) => !r.hostelId || r.hostelId === selectedHostelId,
             );
             setRooms(fetchedRooms);
+            lastTabFetched.current[tabKey] = Date.now();
           }
         } else if (tabKey === "renters") {
           const res = await fetch(`${API_URL}/hostels/${selectedHostelId}/renters`, { headers });
@@ -345,6 +415,7 @@ export function useHostelData(): HostelDataState & HostelDataActions {
               (r) => !r.hostelId || r.hostelId === selectedHostelId,
             );
             setRenters(fetchedRenters);
+            lastTabFetched.current[tabKey] = Date.now();
           }
         } else if (tabKey === "payments" || tabKey === "fees") {
           const [feeRes, paymentRes] = await Promise.all([
@@ -359,17 +430,22 @@ export function useHostelData(): HostelDataState & HostelDataActions {
             const payData = await jsonResponse(paymentRes);
             setPayments(listFrom<Payment>(payData, "payments").filter((p) => !p.hostelId || p.hostelId === selectedHostelId));
           }
+          const nowTs = Date.now();
+          lastTabFetched.current["payments"] = nowTs;
+          lastTabFetched.current["fees"] = nowTs;
         } else if (tabKey === "hostels") {
           const res = await fetch(`${API_URL}/hostels`, { headers });
           if (res.ok) {
             const hostelsData = await jsonResponse(res);
             setHostels(listFrom<Hostel>(hostelsData, "hostels"));
+            lastTabFetched.current[tabKey] = Date.now();
           }
         } else if (tabKey === "repairs") {
           const res = await fetch(`${API_URL}/hostels/${selectedHostelId}/repairs`, { headers });
           if (res.ok) {
             const repData = await jsonResponse(res);
             setRepairs(listFrom<Repair>(repData, "repairs").filter((rp) => !rp.hostelId || rp.hostelId === selectedHostelId));
+            lastTabFetched.current[tabKey] = Date.now();
           }
         }
       } catch {
@@ -383,6 +459,7 @@ export function useHostelData(): HostelDataState & HostelDataActions {
 
   const refreshAll = useCallback(async () => {
     if (!token) return;
+    lastTabFetched.current = {};
     setDataLoading(true);
     try {
       // Re-fetch hostels list so any newly added hostel appears immediately
@@ -391,21 +468,24 @@ export function useHostelData(): HostelDataState & HostelDataActions {
       })
         .then(jsonResponse)
         .catch(() => null);
+      let currentHostels = hostels;
       if (hostelsData) {
         const fetchedHostels = listFrom<Hostel>(hostelsData, "hostels");
+        currentHostels = fetchedHostels;
         setHostels(fetchedHostels);
-        if (!selectedHostelId && fetchedHostels.length > 0) {
-          setSelectedHostelId(fetchedHostels[0].id);
-        }
       }
 
-      if (selectedHostelId) {
-        await refreshHostelData(selectedHostelId, true);
+      const activeHostelId = selectedHostelId || currentHostels?.[0]?.id;
+      if (activeHostelId) {
+        if (!selectedHostelId) {
+          setSelectedHostelId(activeHostelId);
+        }
+        await refreshHostelData(activeHostelId, true);
       }
     } finally {
       setDataLoading(false);
     }
-  }, [token, selectedHostelId, refreshHostelData]);
+  }, [token, selectedHostelId, hostels, refreshHostelData, setSelectedHostelId]);
 
   const loadRenterData = useCallback(
     async (
@@ -418,8 +498,12 @@ export function useHostelData(): HostelDataState & HostelDataActions {
       const headers = { Authorization: `Bearer ${idToken}` };
       try {
         const [rentersData, paymentsData, repairsData, notifData] = await Promise.all([
-          fetch(`${API_URL}/hostels/${hostelId}/renters`, { headers }).then(jsonResponse),
-          fetch(`${API_URL}/hostels/${hostelId}/payments`, { headers }).then(jsonResponse),
+          fetch(`${API_URL}/hostels/${hostelId}/renters`, { headers })
+            .then(jsonResponse)
+            .catch(() => ({ renters: [] })),
+          fetch(`${API_URL}/hostels/${hostelId}/payments`, { headers })
+            .then(jsonResponse)
+            .catch(() => ({ payments: [] })),
           fetch(`${API_URL}/hostels/${hostelId}/my-repairs`, { headers })
             .then(jsonResponse)
             .catch(() => ({ repairs: [] })),
@@ -441,7 +525,9 @@ export function useHostelData(): HostelDataState & HostelDataActions {
           const feesData = await fetch(
             `${API_URL}/hostels/${hostelId}/renters/${myRenter.id}/fees`,
             { headers },
-          ).then(jsonResponse);
+          )
+            .then(jsonResponse)
+            .catch(() => ({ fees: [] }));
           setFees(listFrom<Fee>(feesData, "fees"));
         }
 
