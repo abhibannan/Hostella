@@ -176,9 +176,11 @@ export function RenterPortalScreen({
     }
   }, [windowWidth, containerWidth]);
 
-  // Keep active renter tab aligned on screen rotation or size change
+  // Keep active renter tab aligned ONLY on screen rotation or container width change
+  const prevRenterWidthRef = React.useRef(containerWidth);
   React.useEffect(() => {
-    if (containerWidth > 0) {
+    if (containerWidth > 0 && containerWidth !== prevRenterWidthRef.current) {
+      prevRenterWidthRef.current = containerWidth;
       const idx = RENTER_TABS.indexOf(activeTab);
       if (idx >= 0) {
         pagerRef.current?.scrollTo({ x: idx * containerWidth, animated: false });

@@ -20,6 +20,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Animated,
   AppState,
   BackHandler,
   Dimensions,
@@ -135,11 +136,15 @@ function AppContent() {
   }, [windowWidth, containerWidth]);
 
   const pageScrollRef = useRef<ScrollView>(null);
-  const [mountedTabs, setMountedTabs] = useState<Set<string>>(() => new Set(["dashboard"]));
+  const isProgrammaticScroll = useRef(false);
+  const prevContainerWidth = useRef(containerWidth);
+  const [mountedTabs, setMountedTabs] = useState<Set<string>>(() => new Set(ADMIN_TABS));
+  const subPageAnim = useRef(new Animated.Value(0)).current;
 
-  // Auto-realign horizontal pager whenever screen size, orientation, or font/display scaling changes
+  // Auto-realign horizontal pager ONLY when screen orientation or container width changes
   useEffect(() => {
-    if (containerWidth > 0 && ADMIN_TABS.includes(page)) {
+    if (containerWidth > 0 && containerWidth !== prevContainerWidth.current && ADMIN_TABS.includes(page)) {
+      prevContainerWidth.current = containerWidth;
       const targetIdx = ADMIN_TABS.indexOf(page);
       if (targetIdx >= 0) {
         pageScrollRef.current?.scrollTo({ x: targetIdx * containerWidth, animated: false });
@@ -249,34 +254,32 @@ function AppContent() {
     if (ADMIN_TABS.includes(normalized)) {
       const targetIdx = ADMIN_TABS.indexOf(normalized);
       if (targetIdx >= 0 && containerWidth > 0) {
-        // Instant snap on tap so bottom menu responds without delay
-        pageScrollRef.current?.scrollTo({ x: targetIdx * containerWidth, animated: false });
+        isProgrammaticScroll.current = true;
+        // Fast travel: smooth animated slide to destination tab
+        pageScrollRef.current?.scrollTo({ x: targetIdx * containerWidth, animated: true });
+        setTimeout(() => {
+          isProgrammaticScroll.current = false;
+        }, 350);
       }
     }
   };
 
   const onPageScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (isProgrammaticScroll.current) return;
     const offsetX = e.nativeEvent.contentOffset.x;
     const width = containerWidth || Dimensions.get("window").width;
     if (width <= 0) return;
     const idx = Math.round(offsetX / width);
     if (idx >= 0 && idx < ADMIN_TABS.length) {
       const targetTab = ADMIN_TABS[idx];
-      if (targetTab) {
-        setMountedTabs((prev) => {
-          if (prev.has(targetTab)) return prev;
-          const nextSet = new Set(prev);
-          nextSet.add(targetTab);
-          return nextSet;
-        });
-        if (targetTab !== page) {
-          setPageState(targetTab);
-        }
+      if (targetTab && targetTab !== page) {
+        setPageState(targetTab);
       }
     }
   };
 
   const onPageScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    isProgrammaticScroll.current = false;
     const offsetX = e.nativeEvent.contentOffset.x;
     const width = containerWidth || Dimensions.get("window").width;
     if (width <= 0) return;
@@ -284,12 +287,6 @@ function AppContent() {
     if (idx >= 0 && idx < ADMIN_TABS.length) {
       const targetTab = ADMIN_TABS[idx];
       if (targetTab) {
-        setMountedTabs((prev) => {
-          if (prev.has(targetTab)) return prev;
-          const nextSet = new Set(prev);
-          nextSet.add(targetTab);
-          return nextSet;
-        });
         setPageState(targetTab);
         setPageHistory((prev) =>
           prev[prev.length - 1] === targetTab ? prev : [...prev, targetTab],
@@ -683,6 +680,20 @@ function AppContent() {
     page === "hostels" ||
     page === "repairs" ||
     page === "notifications";
+
+  useEffect(() => {
+    if (isDetailSubPage) {
+      subPageAnim.setValue(0);
+      Animated.spring(subPageAnim, {
+        toValue: 1,
+        tension: 65,
+        friction: 10,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      subPageAnim.setValue(0);
+    }
+  }, [isDetailSubPage, subPageAnim]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // RENDER — session check (prevents login screen from flashing on startup)
@@ -1358,7 +1369,21 @@ function AppContent() {
           </View>
 
           {isDetailSubPage && (
-            <View style={{ flex: 1 }}>
+            <Animated.View
+              style={[
+                { flex: 1 },
+                {
+                  transform: [
+                    {
+                      translateX: subPageAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [containerWidth || 360, 0],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+            >
               {page === "hostels" && (
                 <HostelsScreen
                   hostels={data.hostels}
@@ -1442,7 +1467,7 @@ function AppContent() {
                 />
               )}
 
-            </View>
+            </Animated.View>
           )}
 
           {/* Bottom navigation */}
