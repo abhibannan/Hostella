@@ -130,7 +130,8 @@ router.post(
     try {
       if (
         req.authUser?.role !== "SUPER_ADMIN" &&
-        req.authUser?.role !== "ADMIN"
+        req.authUser?.role !== "ADMIN" &&
+        req.authUser?.role !== "PARTNER"
       ) {
         res.status(403).json({
           message: "Only Admin can create notifications",
@@ -537,7 +538,7 @@ router.delete(
   requireAuth,
   async (req, res, next) => {
     try {
-      const isAdmin = req.authUser?.role === "ADMIN" || req.authUser?.role === "SUPER_ADMIN";
+      const isAdmin = req.authUser?.role === "ADMIN" || req.authUser?.role === "SUPER_ADMIN" || req.authUser?.role === "PARTNER";
       const hostelId = typeof req.query.hostelId === "string" ? req.query.hostelId : null;
 
       if (isAdmin && hostelId) {
@@ -623,7 +624,7 @@ router.delete(
 
       const notifData = notifDoc.data();
       const isOwner = notifData?.userId === req.authUser!.id;
-      const isAdmin = req.authUser?.role === "ADMIN" || req.authUser?.role === "SUPER_ADMIN";
+      const isAdmin = req.authUser?.role === "ADMIN" || req.authUser?.role === "SUPER_ADMIN" || req.authUser?.role === "PARTNER";
 
       if (notifData?.userId === "ALL" || notifData?.entityType === "BROADCAST") {
         if (isAdmin) {
@@ -677,7 +678,8 @@ router.post(
     try {
       if (
         req.authUser?.role !== "SUPER_ADMIN" &&
-        req.authUser?.role !== "ADMIN"
+        req.authUser?.role !== "ADMIN" &&
+        req.authUser?.role !== "PARTNER"
       ) {
         res.status(403).json({ message: "Only Admin can send broadcasts" });
         return;
@@ -765,7 +767,8 @@ router.post(
     try {
       if (
         req.authUser?.role !== "SUPER_ADMIN" &&
-        req.authUser?.role !== "ADMIN"
+        req.authUser?.role !== "ADMIN" &&
+        req.authUser?.role !== "PARTNER"
       ) {
         res.status(403).json({ message: "Only Admin can send fee reminders" });
         return;
@@ -842,7 +845,8 @@ router.post(
     try {
       if (
         req.authUser?.role !== "SUPER_ADMIN" &&
-        req.authUser?.role !== "ADMIN"
+        req.authUser?.role !== "ADMIN" &&
+        req.authUser?.role !== "PARTNER"
       ) {
         res.status(403).json({ message: "Only Admin can send fee reminders" });
         return;

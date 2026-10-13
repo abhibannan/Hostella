@@ -4,6 +4,7 @@ import { db, firebaseAuth } from "../../config/firebase.js";
 import { requireAuth } from "../../middleware/auth.middleware.js";
 import { requireHostelAccess } from "../../middleware/hostel-access.middleware.js";
 import { writeAuditLog } from "../../utils/audit.js";
+import { registerCacheInvalidator, invalidateHostelCaches } from "../../utils/cache.js";
 import { createNotification } from "../notifications/notifications.server.js";
 
 
@@ -15,6 +16,7 @@ export function clearRepairsCache(hostelId?: string | string[]) {
   else if (Array.isArray(hostelId)) hostelId.forEach((id) => repairsCache.delete(id));
   else repairsCache.clear();
 }
+registerCacheInvalidator((hId) => clearRepairsCache(hId));
 
 const createRepairSchema = z.object({
   title: z.string().trim().min(2).max(150),
@@ -73,7 +75,8 @@ router.post(
       if (
         req.authUser?.role !== "RENTER" &&
         req.authUser?.role !== "ADMIN" &&
-        req.authUser?.role !== "SUPER_ADMIN"
+        req.authUser?.role !== "SUPER_ADMIN" &&
+        req.authUser?.role !== "PARTNER"
       ) {
         res.status(403).json({ message: "Access denied" });
         return;
@@ -279,7 +282,7 @@ router.post(
         console.error("Failed to notify staff about new repair:", notifyErr);
       }
 
-      clearRepairsCache(hostelId);
+      invalidateHostelCaches(hostelId);
       res.status(201).json({
         message: "Repair request created successfully",
         repair,
@@ -469,6 +472,7 @@ router.patch(
       if (
         req.authUser?.role !== "SUPER_ADMIN" &&
         req.authUser?.role !== "ADMIN" &&
+        req.authUser?.role !== "PARTNER" &&
         req.authUser?.role !== "REPAIR_PERSON"
       ) {
         res.status(403).json({
@@ -579,6 +583,8 @@ router.patch(
         metadata: parsed.data,
       });
 
+      invalidateHostelCaches(hostelId);
+
       res.json({
         message:
           "Repair request updated successfully",
@@ -622,7 +628,7 @@ router.delete(
       }
 
       const data = repairDoc.data();
-      const isAdmin = req.authUser?.role === "ADMIN" || req.authUser?.role === "SUPER_ADMIN";
+      const isAdmin = req.authUser?.role === "ADMIN" || req.authUser?.role === "SUPER_ADMIN" || req.authUser?.role === "PARTNER";
 
       if (!isAdmin) {
         // If renter, check ownership
@@ -663,6 +669,8 @@ router.delete(
         entityId: repairId,
         metadata: { hostelId, title: data?.title },
       });
+
+      invalidateHostelCaches(hostelId);
 
       res.json({ message: "Repair request deleted successfully", repairId });
     } catch (error) {
@@ -742,7 +750,8 @@ router.post(
     try {
       if (
         req.authUser?.role !== "SUPER_ADMIN" &&
-        req.authUser?.role !== "ADMIN"
+        req.authUser?.role !== "ADMIN" &&
+        req.authUser?.role !== "PARTNER"
       ) {
         res.status(403).json({
           message: "Only Admin can add repair personnel",
@@ -880,7 +889,7 @@ router.post(
         },
       });
 
-      clearRepairsCache(hostelId);
+      invalidateHostelCaches(hostelId);
       res.status(201).json({
         message: "Repair person added successfully",
         repairPerson: {
@@ -909,7 +918,8 @@ router.patch(
     try {
       if (
         req.authUser?.role !== "SUPER_ADMIN" &&
-        req.authUser?.role !== "ADMIN"
+        req.authUser?.role !== "ADMIN" &&
+        req.authUser?.role !== "PARTNER"
       ) {
         res.status(403).json({
           message: "Only Admin can edit repair personnel",
@@ -979,7 +989,8 @@ router.delete(
     try {
       if (
         req.authUser?.role !== "SUPER_ADMIN" &&
-        req.authUser?.role !== "ADMIN"
+        req.authUser?.role !== "ADMIN" &&
+        req.authUser?.role !== "PARTNER"
       ) {
         res.status(403).json({
           message: "Only Admin can remove repair personnel",
@@ -1089,7 +1100,8 @@ router.post(
     try {
       if (
         req.authUser?.role !== "SUPER_ADMIN" &&
-        req.authUser?.role !== "ADMIN"
+        req.authUser?.role !== "ADMIN" &&
+        req.authUser?.role !== "PARTNER"
       ) {
         res.status(403).json({ message: "Only administrators can schedule maintenance tasks" });
         return;
@@ -1133,7 +1145,7 @@ router.post(
         metadata: { hostelId, title: parsed.data.title },
       });
 
-      clearRepairsCache(hostelId);
+      invalidateHostelCaches(hostelId);
       res.status(201).json({
         message: "Maintenance task scheduled successfully",
         maintenanceTask: taskData,
@@ -1204,7 +1216,8 @@ router.delete(
     try {
       if (
         req.authUser?.role !== "SUPER_ADMIN" &&
-        req.authUser?.role !== "ADMIN"
+        req.authUser?.role !== "ADMIN" &&
+        req.authUser?.role !== "PARTNER"
       ) {
         res.status(403).json({ message: "Only administrators can delete maintenance tasks" });
         return;
@@ -1287,7 +1300,7 @@ router.post(
         }
       }
 
-      clearRepairsCache(hostelId);
+      invalidateHostelCaches(hostelId);
 
       res.json({
         message: "Thank you for your rating! Feedback recorded.",

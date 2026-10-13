@@ -3,6 +3,7 @@
     "bootstrap:admin": "tsx src/scripts/bootstrap-admin.ts",
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
+    "test": "tsx --test \"tests/*.test.ts\"",
     "start": "node dist/server.js"
   },
   "dependencies": {

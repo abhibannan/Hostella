@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { db } from "../../config/firebase.js";
 import { requireAuth } from "../../middleware/auth.middleware.js";
+import { requireHostelAccess } from "../../middleware/hostel-access.middleware.js";
+import { registerCacheInvalidator } from "../../utils/cache.js";
 
 const router = Router();
 
@@ -69,9 +71,117 @@ interface CacheEntry<T> {
   timestamp: number;
 }
 const dashboardStatsCache = new Map<string, CacheEntry<DashboardStats>>();
-const CACHE_TTL_MS = 3500; // 3.5s in-memory cache to absorb polling bursts
+const CACHE_TTL_MS = 60000; // 60s in-memory cache to absorb polling bursts and speed up responses
 
-async function calculateDashboard(
+export function invalidateDashboardCache(hostelId?: string) {
+  if (hostelId) {
+    dashboardStatsCache.delete(hostelId);
+    dashboardStatsCache.delete("__all__");
+  } else {
+    dashboardStatsCache.clear();
+  }
+}
+registerCacheInvalidator(invalidateDashboardCache);
+
+export function computeDashboardFromDocs(
+  hostelId: string | undefined,
+  roomsDocs: FirebaseFirestore.DocumentData[],
+  rentersDocs: FirebaseFirestore.DocumentData[],
+  feesDocs: FirebaseFirestore.DocumentData[],
+  paymentsDocs: FirebaseFirestore.DocumentData[],
+  repairsDocs: FirebaseFirestore.DocumentData[],
+): DashboardStats {
+  const stats = emptyStats(hostelId);
+
+  stats.totalRooms = roomsDocs.length;
+
+  const roomIds = new Set<string>();
+  const activeRoomIds = new Set<string>();
+
+  roomsDocs.forEach((doc) => {
+    const data = typeof doc.data === "function" ? doc.data() : doc;
+    const id = doc.id || data.id;
+    if (id) roomIds.add(String(id));
+    const status = String(data.status || "ACTIVE").toUpperCase();
+    if (status === "ACTIVE") {
+      stats.activeRooms += 1;
+    }
+  });
+
+  rentersDocs.forEach((doc) => {
+    const data = typeof doc.data === "function" ? doc.data() : doc;
+    const status = String(data.status || "ACTIVE").toUpperCase();
+
+    if (status === "ACTIVE") {
+      stats.activeRenters += 1;
+
+      if (data.roomId && roomIds.has(String(data.roomId))) {
+        activeRoomIds.add(String(data.roomId));
+      }
+    }
+  });
+
+  stats.occupiedRooms = activeRoomIds.size;
+  stats.availableRooms = Math.max(stats.totalRooms - stats.occupiedRooms, 0);
+
+  feesDocs.forEach((doc) => {
+    const data = typeof doc.data === "function" ? doc.data() : doc;
+
+    const amount = Number(data.amount ?? 0);
+    const paidAmount = Number(data.paidAmount ?? 0);
+
+    stats.totalFees += amount;
+    stats.outstandingFees += Math.max(amount - paidAmount, 0);
+
+    const status = String(data.status ?? "").toUpperCase();
+
+    if (status === "PAID") {
+      stats.paidFees += 1;
+    } else if (status === "PENDING") {
+      stats.pendingFees += 1;
+    } else if (status === "PARTIALLY_PAID") {
+      stats.partiallyPaidFees += 1;
+    } else if (status === "OVERDUE") {
+      stats.overdueFees += 1;
+    }
+  });
+
+  paymentsDocs.forEach((doc) => {
+    const data = typeof doc.data === "function" ? doc.data() : doc;
+    const status = String(data.status ?? "").toUpperCase();
+
+    stats.totalPayments += 1;
+
+    if (status === "PAID" || status === "APPROVED") {
+      stats.paidPayments += 1;
+    } else if (status === "PENDING" || status === "SUBMITTED") {
+      stats.pendingPayments += 1;
+    }
+  });
+
+  repairsDocs.forEach((doc) => {
+    const data = typeof doc.data === "function" ? doc.data() : doc;
+    const status = String(data.status ?? "").toUpperCase();
+
+    stats.totalRepairRequests += 1;
+
+    if (status === "SUBMITTED") {
+      stats.submittedRepairs += 1;
+    } else if (status === "IN_PROGRESS") {
+      stats.inProgressRepairs += 1;
+    } else if (status === "RESOLVED") {
+      stats.resolvedRepairs += 1;
+    } else if (status === "CANCELLED") {
+      stats.cancelledRepairs += 1;
+    }
+  });
+
+  return stats;
+}
+
+export { dashboardStatsCache };
+
+export async function calculateDashboard(
   hostelId?: string,
 ): Promise<DashboardStats> {
   const cacheKey = hostelId || "__all__";
@@ -79,8 +189,6 @@ async function calculateDashboard(
   if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
     return cached.data;
   }
-
-  const stats = emptyStats(hostelId);
 
   let roomsQuery = db.collection("rooms");
   let rentersQuery = db.collection("renters");
@@ -134,114 +242,14 @@ async function calculateDashboard(
     repairsQuery.get(),
   ]);
 
-  // -------------------------------------------------------
-  // ROOMS
-  // -------------------------------------------------------
-
-  stats.totalRooms = roomsSnapshot.size;
-
-  const roomIds = new Set<string>();
-  const activeRoomIds = new Set<string>();
-
-  roomsSnapshot.docs.forEach((doc) => {
-    const data = doc.data();
-    roomIds.add(doc.id);
-    const status = String(data.status || "ACTIVE").toUpperCase();
-    if (status === "ACTIVE") {
-      stats.activeRooms += 1;
-    }
-  });
-
-  rentersSnapshot.docs.forEach((doc) => {
-    const data = doc.data();
-    const status = String(data.status || "ACTIVE").toUpperCase();
-
-    if (status === "ACTIVE") {
-      stats.activeRenters += 1;
-
-      if (
-        data.roomId &&
-        roomIds.has(String(data.roomId))
-      ) {
-        activeRoomIds.add(
-          String(data.roomId),
-        );
-      }
-    }
-  });
-
-  stats.occupiedRooms = activeRoomIds.size;
-  stats.availableRooms = Math.max(
-    stats.totalRooms - stats.occupiedRooms,
-    0,
+  const stats = computeDashboardFromDocs(
+    hostelId,
+    roomsSnapshot.docs,
+    rentersSnapshot.docs,
+    feesSnapshot.docs,
+    paymentsSnapshot.docs,
+    repairsSnapshot.docs,
   );
-
-  // -------------------------------------------------------
-  // FEES
-  // -------------------------------------------------------
-
-  feesSnapshot.docs.forEach((doc) => {
-    const data = doc.data();
-
-    const amount = Number(data.amount ?? 0);
-    const paidAmount = Number(data.paidAmount ?? 0);
-
-    stats.totalFees += amount;
-    stats.outstandingFees += Math.max(amount - paidAmount, 0);
-
-    const status = String(data.status ?? "").toUpperCase();
-
-    if (status === "PAID") {
-      stats.paidFees += 1;
-    } else if (status === "PENDING") {
-      stats.pendingFees += 1;
-    } else if (status === "PARTIALLY_PAID") {
-      stats.partiallyPaidFees += 1;
-    } else if (status === "OVERDUE") {
-      stats.overdueFees += 1;
-    }
-  });
-
-  // -------------------------------------------------------
-  // PAYMENTS
-  // -------------------------------------------------------
-
-  paymentsSnapshot.docs.forEach((doc) => {
-    const data = doc.data();
-
-    const amount = Number(data.amount ?? 0);
-    const status = String(data.status ?? "").toUpperCase();
-
-    stats.totalPayments += 1;
-
-    if (status === "PAID" || status === "APPROVED") {
-      stats.paidPayments += 1;
-    } else if (status === "PENDING" || status === "SUBMITTED") {
-      stats.pendingPayments += 1;
-    }
-  });
-
-  // -------------------------------------------------------
-  // REPAIRS
-  // -------------------------------------------------------
-
-  repairsSnapshot.docs.forEach((doc) => {
-    const status = String(
-      doc.data().status ?? "",
-    ).toUpperCase();
-
-    stats.totalRepairRequests += 1;
-
-    if (status === "SUBMITTED") {
-      stats.submittedRepairs += 1;
-    } else if (status === "IN_PROGRESS") {
-      stats.inProgressRepairs += 1;
-    } else if (status === "RESOLVED") {
-      stats.resolvedRepairs += 1;
-    } else if (status === "CANCELLED") {
-      stats.cancelledRepairs += 1;
-    }
-  });
 
   dashboardStatsCache.set(cacheKey, { data: stats, timestamp: Date.now() });
   return stats;
@@ -260,11 +268,39 @@ router.get(
 
       if (
         role !== "SUPER_ADMIN" &&
-        role !== "ADMIN"
+        role !== "ADMIN" &&
+        role !== "PARTNER"
       ) {
         res.status(403).json({
           message: "Access denied",
         });
+        return;
+      }
+
+      if (role === "PARTNER") {
+        const [assignments, userDoc] = await Promise.all([
+          db.collection("hostelPartners").where("userId", "==", req.authUser!.id).where("status", "==", "ACTIVE").get(),
+          db.collection("users").doc(req.authUser!.id).get(),
+        ]);
+
+        const hostelIdSet = new Set<string>();
+        assignments.docs.forEach((doc) => {
+          const id = doc.data().hostelId;
+          if (id) hostelIdSet.add(String(id));
+        });
+        const uData = userDoc.data();
+        if (Array.isArray(uData?.hostelIds)) {
+          uData.hostelIds.forEach((id: string) => hostelIdSet.add(id));
+        }
+
+        const hostelIds = Array.from(hostelIdSet);
+        if (hostelIds.length === 0) {
+          res.json({ dashboard: emptyStats() });
+          return;
+        }
+
+        const stats = await calculateDashboard(hostelIds[0]);
+        res.json({ dashboard: stats });
         return;
       }
 
@@ -387,6 +423,7 @@ router.get(
 router.get(
   "/:hostelId",
   requireAuth,
+  requireHostelAccess,
   async (req, res, next) => {
     try {
       if (req.authUser?.role === "SUPER_ADMIN") {
@@ -396,61 +433,16 @@ router.get(
         return;
       }
 
-      if (req.authUser?.role !== "ADMIN") {
-        res.status(403).json({
-          message: "Access denied",
-        });
-        return;
-      }
-
       const hostelId = req.params.hostelId;
-
-      if (typeof hostelId !== "string") {
+      if (typeof hostelId !== "string" || !hostelId.trim()) {
         res.status(400).json({
           message: "Invalid hostel ID",
         });
         return;
       }
 
-      const hostel = await db
-        .collection("hostels")
-        .doc(hostelId)
-        .get();
-
-      if (!hostel.exists) {
-        res.status(404).json({
-          message: "Hostel not found",
-        });
-        return;
-      }
-
-      const hostelData = hostel.data() || {};
-      const isOwner = hostelData.ownerId === req.authUser.id;
-
-      if (!isOwner) {
-        const assignmentSnap = await db
-          .collection("hostelAdmins")
-          .where("adminId", "==", req.authUser.id)
-          .where("hostelId", "==", hostelId)
-          .limit(1)
-          .get();
-
-        if (assignmentSnap.empty) {
-          res.status(403).json({
-            message: "You do not have administrative access to this hostel.",
-          });
-          return;
-        }
-      }
-
-      const dashboard =
-        await calculateDashboard(
-          hostelId,
-        );
-
-      res.json({
-        dashboard,
-      });
+      const dashboard = await calculateDashboard(hostelId);
+      res.json({ dashboard });
     } catch (error) {
       next(error);
     }

@@ -87,7 +87,7 @@ router.post(
   requireHostelAccess,
   async (req, res, next) => {
     try {
-      if (req.authUser?.role !== "SUPER_ADMIN" && req.authUser?.role !== "ADMIN") {
+      if (req.authUser?.role !== "SUPER_ADMIN" && req.authUser?.role !== "ADMIN" && req.authUser?.role !== "PARTNER") {
         res.status(403).json({ message: "Only Admin can record hostel expenses" });
         return;
       }
@@ -153,7 +153,7 @@ router.delete(
   requireHostelAccess,
   async (req, res, next) => {
     try {
-      if (req.authUser?.role !== "SUPER_ADMIN" && req.authUser?.role !== "ADMIN") {
+      if (req.authUser?.role !== "SUPER_ADMIN" && req.authUser?.role !== "ADMIN" && req.authUser?.role !== "PARTNER") {
         res.status(403).json({ message: "Only Admin can delete hostel expenses" });
         return;
       }

@@ -6,6 +6,7 @@ import { requireAuth } from "../../middleware/auth.middleware.js";
 import { requireHostelAccess } from "../../middleware/hostel-access.middleware.js";
 import { requireRenterAccess } from "../../middleware/requireRenterAccess.js";
 import { writeAuditLog } from "../../utils/audit.js";
+import { registerCacheInvalidator, invalidateHostelCaches } from "../../utils/cache.js";
 import { checkAndProcessRecurringFees } from "../../services/recurring-fees.service.js";
 
 const router = Router();
@@ -16,6 +17,7 @@ export function clearFeesCache(hostelId?: string | string[]) {
   else if (Array.isArray(hostelId)) hostelId.forEach((id) => feesCache.delete(id));
   else feesCache.clear();
 }
+registerCacheInvalidator((hId) => clearFeesCache(hId));
 
 const createFeeSchema = z.object({
   renterId: z.string().min(1),
@@ -62,7 +64,8 @@ router.post(
     try {
       if (
         req.authUser?.role !== "SUPER_ADMIN" &&
-        req.authUser?.role !== "ADMIN"
+        req.authUser?.role !== "ADMIN" &&
+        req.authUser?.role !== "PARTNER"
       ) {
         res.status(403).json({ message: "Access denied" });
         return;
@@ -160,7 +163,7 @@ router.post(
         },
       });
 
-      clearFeesCache(hostelId);
+      invalidateHostelCaches(hostelId);
       res.status(201).json({
         message: "Fee created successfully",
         fee,
@@ -180,7 +183,8 @@ router.post(
     try {
       if (
         req.authUser?.role !== "SUPER_ADMIN" &&
-        req.authUser?.role !== "ADMIN"
+        req.authUser?.role !== "ADMIN" &&
+        req.authUser?.role !== "PARTNER"
       ) {
         res.status(403).json({ message: "Access denied" });
         return;
@@ -284,7 +288,7 @@ router.post(
         });
       }
 
-      clearFeesCache(hostelId);
+      invalidateHostelCaches(hostelId);
       res.status(201).json({
         message: `Generated ${generatedCount} fee record${generatedCount === 1 ? '' : 's'} (${skippedCount} already existed or skipped)`,
         generatedCount,
@@ -305,7 +309,8 @@ router.post(
     try {
       if (
         req.authUser?.role !== "SUPER_ADMIN" &&
-        req.authUser?.role !== "ADMIN"
+        req.authUser?.role !== "ADMIN" &&
+        req.authUser?.role !== "PARTNER"
       ) {
         res.status(403).json({ message: "Access denied" });
         return;
@@ -461,7 +466,8 @@ router.patch(
     try {
       if (
         req.authUser?.role !== "SUPER_ADMIN" &&
-        req.authUser?.role !== "ADMIN"
+        req.authUser?.role !== "ADMIN" &&
+        req.authUser?.role !== "PARTNER"
       ) {
         res.status(403).json({ message: "Access denied" });
         return;
@@ -529,6 +535,8 @@ router.patch(
         metadata: parsed.data,
       });
 
+      invalidateHostelCaches(hostelId);
+
       res.json({
         message: "Fee updated successfully",
         fee: {
@@ -551,7 +559,8 @@ router.post(
     try {
       if (
         req.authUser?.role !== "SUPER_ADMIN" &&
-        req.authUser?.role !== "ADMIN"
+        req.authUser?.role !== "ADMIN" &&
+        req.authUser?.role !== "PARTNER"
       ) {
         res.status(403).json({ message: "Access denied" });
         return;
@@ -702,7 +711,7 @@ router.post(
         },
       });
 
-      clearFeesCache(hostelId);
+      invalidateHostelCaches(hostelId);
       res.status(201).json({
         message: "Payment recorded successfully",
         payment,
@@ -820,7 +829,8 @@ router.get(
     try {
       if (
         req.authUser?.role !== "SUPER_ADMIN" &&
-        req.authUser?.role !== "ADMIN"
+        req.authUser?.role !== "ADMIN" &&
+        req.authUser?.role !== "PARTNER"
       ) {
         res.status(403).json({
           message: "Access denied",
@@ -863,7 +873,8 @@ router.delete(
     try {
       if (
         req.authUser?.role !== "SUPER_ADMIN" &&
-        req.authUser?.role !== "ADMIN"
+        req.authUser?.role !== "ADMIN" &&
+        req.authUser?.role !== "PARTNER"
       ) {
         res.status(403).json({
           message: "Only administrators can delete fee records",
@@ -919,6 +930,8 @@ router.delete(
           amount: feeData?.amount,
         },
       });
+
+      invalidateHostelCaches(hostelId);
 
       res.json({
         message: "Fee record and associated payments deleted successfully",

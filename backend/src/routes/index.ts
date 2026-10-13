@@ -12,6 +12,7 @@ import uploadsRouter from "../modules/uploads/uploads.routes.js";
 import expensesRouter from "../modules/expenses/expenses.routes.js";
 import notificationsRouter from "../modules/notifications/notifications.routes.js";
 import auditLogsRouter from "../modules/audit-logs/audit-logs.routes.js";
+import smsRouter from "../modules/sms/sms.routes.js";
 
 import { getPlatformConfig } from "../services/telemetry.service.js";
 
@@ -41,6 +42,7 @@ router.use("/hostels", rentersRouter);
 router.use("/hostels", feesRouter);
 router.use("/hostels", repairsRouter);
 router.use("/notifications", notificationsRouter);
+router.use("/sms", smsRouter);
 router.use("/dashboard", dashboardRouter);
 router.use("/uploads", uploadsRouter);
 router.use("/hostels", payment_proofs_routes);

@@ -91,6 +91,32 @@ export async function requireHostelAccess(
       return;
     }
 
+    // PARTNER
+    // Partners can access ONLY the specific hostel they were added to
+    if (req.authUser.role === "PARTNER") {
+      const partnerSnap = await db
+        .collection("hostelPartners")
+        .where("userId", "==", req.authUser.id)
+        .where("hostelId", "==", hostelId)
+        .where("status", "==", "ACTIVE")
+        .limit(1)
+        .get();
+
+      const hasDirectAssignment = !partnerSnap.empty;
+      const hasHostelIdInProfile = Array.isArray(req.authUser.hostelIds) && req.authUser.hostelIds.includes(hostelId);
+
+      if (!hasDirectAssignment && !hasHostelIdInProfile) {
+        res.status(403).json({
+          message: "You do not have access to this hostel as a partner.",
+        });
+        return;
+      }
+
+      accessCache.set(cacheKey, { granted: true, timestamp: Date.now() });
+      next();
+      return;
+    }
+
     // RENTER
     // Can access only their currently active hostel.
     if (req.authUser.role === "RENTER") {

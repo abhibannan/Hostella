@@ -4,6 +4,7 @@ import { db } from "../../config/firebase.js";
 import { requireAuth } from "../../middleware/auth.middleware.js";
 import { requireHostelAccess } from "../../middleware/hostel-access.middleware.js";
 import { writeAuditLog } from "../../utils/audit.js";
+import { registerCacheInvalidator, invalidateHostelCaches } from "../../utils/cache.js";
 
 const router = Router();
 
@@ -12,7 +13,7 @@ interface CacheItem<T> {
   timestamp: number;
 }
 const roomsCache = new Map<string, CacheItem<any[]>>();
-const ROOMS_CACHE_TTL_MS = 5000;
+const ROOMS_CACHE_TTL_MS = 30000;
 
 export function invalidateRoomsCache(hostelId?: string) {
   if (hostelId) {
@@ -21,6 +22,7 @@ export function invalidateRoomsCache(hostelId?: string) {
     roomsCache.clear();
   }
 }
+registerCacheInvalidator(invalidateRoomsCache);
 
 const roomSchema = z.object({
   roomNumber: z.string().trim().min(1).max(50),
@@ -40,7 +42,8 @@ router.post(
     try {
       if (
         req.authUser?.role !== "SUPER_ADMIN" &&
-        req.authUser?.role !== "ADMIN"
+        req.authUser?.role !== "ADMIN" &&
+        req.authUser?.role !== "PARTNER"
       ) {
         res.status(403).json({ message: "Access denied" });
         return;
@@ -112,6 +115,8 @@ router.post(
           maxOccupants: room.maxOccupants,
         },
       });
+
+      invalidateHostelCaches(hostelId);
 
       res.status(201).json({
         message: "Room created successfully",
@@ -229,7 +234,8 @@ router.patch(
     try {
       if (
         req.authUser?.role !== "SUPER_ADMIN" &&
-        req.authUser?.role !== "ADMIN"
+        req.authUser?.role !== "ADMIN" &&
+        req.authUser?.role !== "PARTNER"
       ) {
         res.status(403).json({ message: "Access denied" });
         return;
@@ -299,6 +305,8 @@ router.patch(
         metadata: parsed.data,
       });
 
+      invalidateHostelCaches(hostelId);
+
       res.json({
         message: "Room updated successfully",
         room: {
@@ -321,7 +329,8 @@ router.delete(
     try {
       if (
         req.authUser?.role !== "SUPER_ADMIN" &&
-        req.authUser?.role !== "ADMIN"
+        req.authUser?.role !== "ADMIN" &&
+        req.authUser?.role !== "PARTNER"
       ) {
         res.status(403).json({ message: "Access denied" });
         return;
@@ -370,6 +379,8 @@ router.delete(
         entityId: roomId,
         metadata: { hostelId },
       });
+
+      invalidateHostelCaches(hostelId);
 
       res.json({
         message: "Room deleted successfully",
@@ -441,7 +452,7 @@ router.patch(
   requireHostelAccess,
   async (req, res, next) => {
     try {
-      if (req.authUser?.role !== "SUPER_ADMIN" && req.authUser?.role !== "ADMIN") {
+      if (req.authUser?.role !== "SUPER_ADMIN" && req.authUser?.role !== "ADMIN" && req.authUser?.role !== "PARTNER") {
         res.status(403).json({ message: "Access denied" });
         return;
       }
@@ -478,7 +489,7 @@ router.patch(
   requireHostelAccess,
   async (req, res, next) => {
     try {
-      if (req.authUser?.role !== "SUPER_ADMIN" && req.authUser?.role !== "ADMIN") {
+      if (req.authUser?.role !== "SUPER_ADMIN" && req.authUser?.role !== "ADMIN" && req.authUser?.role !== "PARTNER") {
         res.status(403).json({ message: "Access denied" });
         return;
       }
@@ -558,6 +569,8 @@ router.patch(
         entityId: renterId,
         metadata: { hostelId, sourceRoomId, targetRoomId },
       });
+
+      invalidateHostelCaches(hostelId);
 
       res.json({ message: "Renter transferred successfully" });
     } catch (error) {

@@ -9,7 +9,7 @@ const schema=z.object({renterId:z.string().min(1),feeId:z.string().optional(),am
 
 router.post("/:hostelId/payments",requireAuth,requireHostelAccess,async(req,res,next)=>{
  try{
-  if(!["SUPER_ADMIN","ADMIN"].includes(req.authUser!.role)){res.status(403).json({message:"Access denied"});return;}
+  if(!["SUPER_ADMIN","ADMIN","PARTNER"].includes(req.authUser!.role)){res.status(403).json({message:"Access denied"});return;}
   const p=schema.safeParse(req.body);if(!p.success){res.status(400).json({message:"Invalid payment data",errors:p.error.flatten()});return;}
   const renter=await db.collection("renters").doc(p.data.renterId).get();if(!renter.exists||renter.data()?.hostelId!==req.params.hostelId){res.status(400).json({message:"Renter not found in hostel"});return;}
   if(p.data.feeId){const fee=await db.collection("fees").doc(p.data.feeId).get();if(!fee.exists||fee.data()?.hostelId!==req.params.hostelId){res.status(400).json({message:"Fee not found in hostel"});return;}}

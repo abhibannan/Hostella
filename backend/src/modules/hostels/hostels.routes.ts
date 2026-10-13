@@ -1,11 +1,31 @@
 import { Router } from "express";
 import { z } from "zod";
-import { db } from "../../config/firebase.js";
-import { requireAuth } from "../../middleware/auth.middleware.js";
-import { requireHostelAccess } from "../../middleware/hostel-access.middleware.js";
+import { db, firebaseAuth } from "../../config/firebase.js";
+import { requireAuth, invalidateAuthCache } from "../../middleware/auth.middleware.js";
+import { requireHostelAccess, invalidateHostelAccessCache } from "../../middleware/hostel-access.middleware.js";
 import { writeAuditLog } from "../../utils/audit.js";
+import { registerCacheInvalidator, invalidateHostelCaches } from "../../utils/cache.js";
+import { computeDashboardFromDocs, dashboardStatsCache } from "../dashboard/dashboard.routes.js";
 
 const router = Router();
+
+interface HostelsCacheEntry {
+  data: any[];
+  timestamp: number;
+}
+const userHostelsCache = new Map<string, HostelsCacheEntry>();
+const USER_HOSTELS_CACHE_TTL_MS = 30 * 1000; // 30s cache for user's hostels list
+
+export function invalidateUserHostelsCache(userId?: string) {
+  if (userId) {
+    for (const key of userHostelsCache.keys()) {
+      if (key.startsWith(userId)) userHostelsCache.delete(key);
+    }
+  } else {
+    userHostelsCache.clear();
+  }
+}
+registerCacheInvalidator(() => invalidateUserHostelsCache());
 
 const emptyToUndefined = (val: unknown) =>
   typeof val === "string" && !val.trim() ? undefined : val;
@@ -31,6 +51,13 @@ router.post("/", requireAuth, async (req, res, next) => {
     if (req.authUser?.role === "SUPER_ADMIN") {
       res.status(403).json({
         message: "Super Admin can only add and manage administrators. Hostels are created and operated by Hostel Admins.",
+      });
+      return;
+    }
+
+    if (req.authUser?.role === "PARTNER") {
+      res.status(403).json({
+        message: "Partners cannot create hostels. Only administrators can add hostels.",
       });
       return;
     }
@@ -82,6 +109,10 @@ router.post("/", requireAuth, async (req, res, next) => {
       entityId: ref.id,
     });
 
+    invalidateUserHostelsCache();
+    invalidateHostelAccessCache(ref.id, req.authUser.id);
+    invalidateHostelCaches(ref.id);
+
     res.status(201).json({
       message: "Hostel created successfully",
       hostel,
@@ -103,6 +134,18 @@ router.get(
         return;
       }
 
+      const cacheKey = `${req.authUser.id}_${req.authUser.role}`;
+      const cached = userHostelsCache.get(cacheKey);
+      if (cached && Date.now() - cached.timestamp < USER_HOSTELS_CACHE_TTL_MS) {
+        res.json({ hostels: cached.data });
+        return;
+      }
+
+      const sendHostels = (hostelsList: any[]) => {
+        userHostelsCache.set(cacheKey, { data: hostelsList, timestamp: Date.now() });
+        res.json({ hostels: hostelsList });
+      };
+
       if (req.authUser.role === "SUPER_ADMIN") {
         const allHostelsSnap = await db.collection("hostels").get();
         const hostels = allHostelsSnap.docs.map((d) => ({
@@ -113,7 +156,7 @@ router.get(
           totalRooms: d.data()?.totalRooms || 0,
           ...d.data(),
         }));
-        res.json({ hostels });
+        sendHostels(hostels);
         return;
       }
 
@@ -139,7 +182,42 @@ router.get(
         }
 
         // Strictly isolated: only return hostels owned or assigned to this admin
-        res.json({ hostels: Array.from(hostelMap.values()) });
+        sendHostels(Array.from(hostelMap.values()));
+        return;
+      }
+
+      if (req.authUser.role === "PARTNER") {
+        const [assignments, userDoc] = await Promise.all([
+          db.collection("hostelPartners").where("userId", "==", req.authUser.id).where("status", "==", "ACTIVE").get(),
+          db.collection("users").doc(req.authUser.id).get(),
+        ]);
+
+        const assignedIds = new Set<string>();
+        assignments.docs.forEach((d) => {
+          const hId = d.data().hostelId;
+          if (hId) assignedIds.add(String(hId));
+        });
+
+        const uData = userDoc.data();
+        if (Array.isArray(uData?.hostelIds)) {
+          uData.hostelIds.forEach((id: string) => assignedIds.add(id));
+        }
+
+        if (assignedIds.size === 0) {
+          res.json({ hostels: [] });
+          return;
+        }
+
+        const refs = Array.from(assignedIds).map((id) => db.collection("hostels").doc(id));
+        const snaps = await db.getAll(...refs);
+        const hostels: any[] = [];
+        snaps.forEach((s) => {
+          if (s.exists) {
+            hostels.push({ id: s.id, ...s.data() });
+          }
+        });
+
+        sendHostels(hostels);
         return;
       }
 
@@ -152,21 +230,21 @@ router.get(
           .get();
 
         if (renterSnapshot.empty) {
-          res.json({ hostels: [] });
+          sendHostels([]);
           return;
         }
 
         const renterDoc = renterSnapshot.docs[0];
 
         if (!renterDoc) {
-          res.json({ hostels: [] });
+          sendHostels([]);
           return;
         }
 
         const hostelId = renterDoc.data().hostelId;
 
         if (!hostelId) {
-          res.json({ hostels: [] });
+          sendHostels([]);
           return;
         }
 
@@ -176,18 +254,16 @@ router.get(
           .get();
 
         if (!hostelSnapshot.exists) {
-          res.json({ hostels: [] });
+          sendHostels([]);
           return;
         }
 
-        res.json({
-          hostels: [
-            {
-              id: hostelSnapshot.id,
-              ...hostelSnapshot.data(),
-            },
-          ],
-        });
+        sendHostels([
+          {
+            id: hostelSnapshot.id,
+            ...hostelSnapshot.data(),
+          },
+        ]);
         return;
       }
 
@@ -208,7 +284,7 @@ router.get(
         const allHostelIds = Array.from(new Set([...hostelIdsFromRepairPersons, ...userHostelIds]));
 
         if (allHostelIds.length === 0) {
-          res.json({ hostels: [] });
+          sendHostels([]);
           return;
         }
 
@@ -223,7 +299,7 @@ router.get(
             ...doc.data(),
           }));
 
-        res.json({ hostels });
+        sendHostels(hostels);
         return;
       }
 
@@ -275,6 +351,22 @@ router.get(
   },
 );
 
+interface SnapshotCacheEntry {
+  data: any;
+  timestamp: number;
+}
+const snapshotCache = new Map<string, SnapshotCacheEntry>();
+const SNAPSHOT_CACHE_TTL_MS = 60 * 1000; // 60s in-memory cache
+
+export function invalidateHostelSnapshotCache(hostelId?: string) {
+  if (hostelId) {
+    snapshotCache.delete(hostelId);
+  } else {
+    snapshotCache.clear();
+  }
+}
+registerCacheInvalidator(invalidateHostelSnapshotCache);
+
 router.get(
   "/:hostelId/snapshot",
   requireAuth,
@@ -285,6 +377,12 @@ router.get(
 
       if (typeof hostelId !== "string") {
         res.status(400).json({ message: "Invalid hostel ID" });
+        return;
+      }
+
+      const cached = snapshotCache.get(hostelId);
+      if (cached && Date.now() - cached.timestamp < SNAPSHOT_CACHE_TTL_MS) {
+        res.json(cached.data);
         return;
       }
 
@@ -320,7 +418,20 @@ router.get(
       });
       const repairs = repairsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
 
-      res.json({ rooms, renters, fees, payments, repairs });
+      const computedDashboard = computeDashboardFromDocs(
+        hostelId,
+        roomsSnap.docs,
+        rentersSnap.docs,
+        feesSnap.docs,
+        paymentsSnap.docs,
+        repairsSnap.docs,
+      );
+      dashboardStatsCache.set(hostelId, { data: computedDashboard, timestamp: Date.now() });
+
+      const payload = { rooms, renters, fees, payments, repairs, dashboard: computedDashboard };
+      snapshotCache.set(hostelId, { data: payload, timestamp: Date.now() });
+
+      res.json(payload);
     } catch (error) {
       next(error);
     }
@@ -333,7 +444,7 @@ router.patch(
   requireHostelAccess,
   async (req, res, next) => {
     try {
-      if (req.authUser?.role !== "ADMIN") {
+      if (req.authUser?.role !== "ADMIN" && req.authUser?.role !== "SUPER_ADMIN" && req.authUser?.role !== "PARTNER") {
         res.status(403).json({
           message: "Only administrators can update hostels",
         });
@@ -751,6 +862,248 @@ router.get(
       res.json({
         notifications,
       });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+const partnerSchema = z.object({
+  name: z.string().trim().min(1, "Name is required").max(100),
+  email: z.string().trim().email("Valid email is required").toLowerCase(),
+  phone: z.preprocess(emptyToUndefined, z.string().trim().max(30).optional()),
+  password: z.preprocess(emptyToUndefined, z.string().min(6).optional()),
+});
+
+// GET /:hostelId/partners
+router.get(
+  "/:hostelId/partners",
+  requireAuth,
+  requireHostelAccess,
+  async (req, res, next) => {
+    try {
+      const hostelId = req.params.hostelId;
+      if (typeof hostelId !== "string" || !hostelId.trim()) {
+        res.status(400).json({ message: "Invalid hostel ID" });
+        return;
+      }
+
+      const snap = await db
+        .collection("hostelPartners")
+        .where("hostelId", "==", hostelId)
+        .get();
+
+      const partners = snap.docs.map((doc) => {
+        const d = doc.data();
+        return {
+          id: doc.id,
+          hostelId: d.hostelId,
+          userId: d.userId,
+          name: d.name,
+          email: d.email,
+          phone: d.phone || null,
+          status: d.status || "ACTIVE",
+          assignedAt: d.assignedAt,
+          createdAt: d.createdAt,
+        };
+      });
+
+      res.json({ partners });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// POST /:hostelId/partners
+router.post(
+  "/:hostelId/partners",
+  requireAuth,
+  requireHostelAccess,
+  async (req, res, next) => {
+    try {
+      if (req.authUser?.role !== "ADMIN" && req.authUser?.role !== "SUPER_ADMIN") {
+        res.status(403).json({ message: "Only administrators can add partners for a hostel" });
+        return;
+      }
+
+      const hostelId = req.params.hostelId;
+      if (typeof hostelId !== "string" || !hostelId.trim()) {
+        res.status(400).json({ message: "Invalid hostel ID" });
+        return;
+      }
+
+      const parsed = partnerSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({
+          message: "Invalid partner data",
+          errors: parsed.error.flatten(),
+        });
+        return;
+      }
+
+      const { name, email, phone, password } = parsed.data;
+
+      // Check if this partner is already active for this hostel
+      const existingAssignment = await db
+        .collection("hostelPartners")
+        .where("hostelId", "==", hostelId)
+        .where("email", "==", email)
+        .where("status", "==", "ACTIVE")
+        .limit(1)
+        .get();
+
+      if (!existingAssignment.empty) {
+        res.status(409).json({ message: "This email is already an active partner for this hostel" });
+        return;
+      }
+
+      // 1. Get or create Firebase auth user
+      let firebaseUser;
+      try {
+        firebaseUser = await firebaseAuth.getUserByEmail(email);
+        if (password) {
+          await firebaseAuth.updateUser(firebaseUser.uid, { password });
+        }
+      } catch (err: any) {
+        if (err?.code === "auth/user-not-found") {
+          firebaseUser = await firebaseAuth.createUser({
+            email,
+            password: password || "Partner@123",
+            displayName: name,
+          });
+        } else {
+          res.status(400).json({ message: err?.message || "Failed to setup user authentication" });
+          return;
+        }
+      }
+
+      const now = new Date().toISOString();
+
+      // 2. Upsert in users collection
+      const userRef = db.collection("users").doc(firebaseUser.uid);
+      const userSnap = await userRef.get();
+
+      if (userSnap.exists) {
+        const uData = userSnap.data();
+        const existingHostels: string[] = Array.isArray(uData?.hostelIds)
+          ? (uData.hostelIds as string[])
+          : [];
+        if (!existingHostels.includes(hostelId)) {
+          existingHostels.push(hostelId);
+        }
+        await userRef.update({
+          hostelIds: existingHostels,
+          phone: phone || uData?.phone,
+          role: uData?.role === "SUPER_ADMIN" || uData?.role === "ADMIN" ? uData.role : "PARTNER",
+          updatedAt: now,
+        });
+      } else {
+        await userRef.set({
+          id: firebaseUser.uid,
+          firebaseUid: firebaseUser.uid,
+          email,
+          firstName: name.split(" ")[0] || name,
+          lastName: name.split(" ").slice(1).join(" ") || null,
+          phone: phone || null,
+          profilePhotoUrl: null,
+          role: "PARTNER",
+          status: "ACTIVE",
+          hostelIds: [hostelId],
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+
+      // 3. Upsert into hostelPartners
+      const partnerRef = db.collection("hostelPartners").doc();
+      const partnerDoc = {
+        id: partnerRef.id,
+        hostelId,
+        userId: firebaseUser.uid,
+        name,
+        email,
+        phone: phone || null,
+        status: "ACTIVE" as const,
+        assignedAt: now,
+        createdAt: now,
+        createdBy: req.authUser.id,
+      };
+      await partnerRef.set(partnerDoc);
+
+      invalidateHostelAccessCache(hostelId, firebaseUser.uid);
+      invalidateAuthCache(firebaseUser.uid);
+
+      await writeAuditLog({
+        actorId: req.authUser.id,
+        action: "ADD_HOSTEL_PARTNER",
+        entityType: "HOSTEL",
+        entityId: hostelId,
+        metadata: { partnerId: partnerRef.id, partnerEmail: email },
+      });
+
+      res.status(201).json({
+        message: "Partner added successfully",
+        partner: partnerDoc,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// DELETE /:hostelId/partners/:partnerId
+router.delete(
+  "/:hostelId/partners/:partnerId",
+  requireAuth,
+  requireHostelAccess,
+  async (req, res, next) => {
+    try {
+      if (req.authUser?.role !== "ADMIN" && req.authUser?.role !== "SUPER_ADMIN") {
+        res.status(403).json({ message: "Only administrators can remove partners" });
+        return;
+      }
+
+      const hostelId = typeof req.params.hostelId === "string" ? req.params.hostelId : "";
+      const partnerId = typeof req.params.partnerId === "string" ? req.params.partnerId : "";
+      if (!hostelId || !partnerId) {
+        res.status(400).json({ message: "Invalid parameters" });
+        return;
+      }
+      const partnerRef = db.collection("hostelPartners").doc(partnerId);
+      const partnerSnap = await partnerRef.get();
+
+      if (!partnerSnap.exists) {
+        res.status(404).json({ message: "Partner not found" });
+        return;
+      }
+
+      const pData = partnerSnap.data();
+      const userId = pData?.userId;
+
+      await partnerRef.delete();
+
+      if (userId) {
+        const uRef = db.collection("users").doc(userId);
+        const uSnap = await uRef.get();
+        if (uSnap.exists) {
+          const uData = uSnap.data();
+          const updatedHostels = (uData?.hostelIds || []).filter((h: string) => h !== hostelId);
+          await uRef.update({ hostelIds: updatedHostels, updatedAt: new Date().toISOString() });
+        }
+        invalidateHostelAccessCache(hostelId, userId);
+        invalidateAuthCache(userId);
+      }
+
+      await writeAuditLog({
+        actorId: req.authUser.id,
+        action: "REMOVE_HOSTEL_PARTNER",
+        entityType: "HOSTEL",
+        entityId: hostelId,
+        metadata: { partnerId },
+      });
+
+      res.json({ message: "Partner removed successfully" });
     } catch (error) {
       next(error);
     }

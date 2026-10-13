@@ -1,4 +1,4 @@
-export type UserRole = "SUPER_ADMIN" | "ADMIN" | "RENTER" | "REPAIR_PERSON";
+export type UserRole = "SUPER_ADMIN" | "ADMIN" | "RENTER" | "REPAIR_PERSON" | "PARTNER";
 export type UserStatus = "ACTIVE" | "DISABLED";
 
 export interface AuthUser {

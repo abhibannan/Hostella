@@ -4,6 +4,7 @@ import { db, storage } from "../../config/firebase.js";
 import { requireAuth } from "../../middleware/auth.middleware.js";
 import { requireHostelAccess } from "../../middleware/hostel-access.middleware.js";
 import { writeAuditLog } from "../../utils/audit.js";
+import { registerCacheInvalidator, invalidateHostelCaches } from "../../utils/cache.js";
 
 
 const router = Router();
@@ -36,6 +37,7 @@ export function clearPaymentsCache(hostelId?: string) {
     paymentsCache.clear();
   }
 }
+registerCacheInvalidator((hId) => clearPaymentsCache(hId));
 
 async function resolveProofUrlsForPayments(
   documents: (FirebaseFirestore.QueryDocumentSnapshot | FirebaseFirestore.DocumentSnapshot)[],
@@ -385,7 +387,7 @@ router.post(
         // notification logic removed
       }
 
-      clearPaymentsCache(hostelId);
+      invalidateHostelCaches(hostelId);
 
       res.status(201).json({
         message: "Payment proof submitted successfully",
@@ -410,7 +412,8 @@ router.patch(
     try {
       if (
         req.authUser?.role !== "SUPER_ADMIN" &&
-        req.authUser?.role !== "ADMIN"
+        req.authUser?.role !== "ADMIN" &&
+        req.authUser?.role !== "PARTNER"
       ) {
         res.status(403).json({
           message: "Access denied",
@@ -531,7 +534,7 @@ router.patch(
         // notification logic removed
       }
 
-      clearPaymentsCache(hostelId);
+      invalidateHostelCaches(hostelId);
 
       res.json({
         message:
@@ -562,7 +565,8 @@ const deletePaymentHandler = async (
   try {
     const isSuperAdminOrAdmin =
       req.authUser?.role === "SUPER_ADMIN" ||
-      req.authUser?.role === "ADMIN";
+      req.authUser?.role === "ADMIN" ||
+      req.authUser?.role === "PARTNER";
     const isRenter = req.authUser?.role === "RENTER";
 
     if (!isSuperAdminOrAdmin && !isRenter) {
@@ -671,7 +675,7 @@ const deletePaymentHandler = async (
       },
     });
 
-    clearPaymentsCache(hostelId);
+    invalidateHostelCaches(hostelId);
 
     res.json({
       message: "Payment record deleted successfully",

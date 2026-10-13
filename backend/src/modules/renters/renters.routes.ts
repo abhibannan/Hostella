@@ -8,7 +8,7 @@ import {
 import { requireAuth } from "../../middleware/auth.middleware.js";
 import { requireHostelAccess } from "../../middleware/hostel-access.middleware.js";
 import { writeAuditLog } from "../../utils/audit.js";
-
+import { invalidateHostelCaches } from "../../utils/cache.js";
 
 const router = Router();
 
@@ -193,7 +193,8 @@ router.post(
     try {
       if (
         req.authUser?.role !== "SUPER_ADMIN" &&
-        req.authUser?.role !== "ADMIN"
+        req.authUser?.role !== "ADMIN" &&
+        req.authUser?.role !== "PARTNER"
       ) {
         res.status(403).json({
           message: "Access denied",
@@ -509,6 +510,8 @@ router.post(
         },
       });
 
+      invalidateHostelCaches(hostelId);
+
       res.status(201).json({
         message:
           "Renter account and initial fee created successfully",
@@ -571,7 +574,8 @@ router.post(
     try {
       if (
         req.authUser?.role !== "SUPER_ADMIN" &&
-        req.authUser?.role !== "ADMIN"
+        req.authUser?.role !== "ADMIN" &&
+        req.authUser?.role !== "PARTNER"
       ) {
         res.status(403).json({
           message: "Access denied",
@@ -729,6 +733,8 @@ router.post(
           roomId,
         },
       });
+
+      invalidateHostelCaches(hostelId);
 
       res.status(201).json({
         message:
@@ -1019,7 +1025,8 @@ router.patch(
     try {
       if (
         req.authUser?.role !== "SUPER_ADMIN" &&
-        req.authUser?.role !== "ADMIN"
+        req.authUser?.role !== "ADMIN" &&
+        req.authUser?.role !== "PARTNER"
       ) {
         res.status(403).json({
           message: "Access denied",
@@ -1234,6 +1241,8 @@ router.patch(
           parsed.data,
       });
 
+      invalidateHostelCaches(hostelId);
+
       res.json({
         message:
           "Renter updated successfully",
@@ -1261,7 +1270,8 @@ router.delete(
     try {
       if (
         req.authUser?.role !== "SUPER_ADMIN" &&
-        req.authUser?.role !== "ADMIN"
+        req.authUser?.role !== "ADMIN" &&
+        req.authUser?.role !== "PARTNER"
       ) {
         res.status(403).json({
           message: "Access denied",
@@ -1394,6 +1404,8 @@ router.delete(
           }
         }
       }
+
+      invalidateHostelCaches(hostelId);
 
       res.json({
         message:
