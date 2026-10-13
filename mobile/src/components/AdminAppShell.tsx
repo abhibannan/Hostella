@@ -5,13 +5,13 @@ import {
   NativeScrollEvent,
   NativeSyntheticEvent,
   Platform,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../contexts/ThemeContext";
 import { Tab, User } from "../types";
 import { BottomTab } from "./common";
@@ -108,6 +108,11 @@ export function AdminAppShell({
   onFlushOfflineQueue,
 }: AdminAppShellProps) {
   const { colors, toggleTheme, isDark, themeMode } = useTheme();
+  const insets = useSafeAreaInsets();
+  const topInset = Math.max(
+    insets.top,
+    Platform.OS === "android" ? (StatusBar.currentHeight || 24) : 0
+  );
 
   const isDetailSubPage =
     page === "hostels" ||
@@ -118,10 +123,11 @@ export function AdminAppShell({
   const headerBg = isNavyHero ? (isDark ? "#060B1E" : "#0A1333") : colors.background;
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: headerBg }]}>
+    <View style={[styles.safeArea, { backgroundColor: headerBg, paddingTop: topInset }]}>
       <StatusBar
         barStyle={isNavyHero ? "light-content" : isDark ? "light-content" : "dark-content"}
         backgroundColor={headerBg}
+        translucent={Platform.OS === "android"}
       />
       <GlobalAlertBanner
         banner={platformStatus?.alertBanner}
@@ -492,7 +498,7 @@ export function AdminAppShell({
         )}
 
         {/* Bottom navigation */}
-        <View style={[styles.bottomNavWrap, { backgroundColor: colors.background }]}>
+        <View style={[styles.bottomNavWrap, { backgroundColor: colors.background, paddingBottom: Math.max(insets.bottom, Platform.OS === "ios" ? 4 : 10) }]}>
           <View
             style={[
               styles.bottomNav,
@@ -557,7 +563,7 @@ export function AdminAppShell({
           <Text style={[styles.refreshOverlayText, { color: colors.secondary }]}>Refreshing…</Text>
         </View>
       ) : null}
-    </SafeAreaView>
+    </View>
   );
 }
 

@@ -20,11 +20,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AppState,
-  SafeAreaView,
+  Platform,
   StatusBar,
   StyleSheet,
+  View,
 } from "react-native";
-import { SafeAreaProvider } from "react-native-safe-area-context";
+import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import * as WebBrowser from "expo-web-browser";
 
 import { ThemeProvider, useTheme } from "./src/contexts/ThemeContext";
@@ -77,6 +78,11 @@ WebBrowser.maybeCompleteAuthSession();
 // ─────────────────────────────────────────────────────────────────────────────
 function AppContent() {
   const { colors, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
+  const topInset = Math.max(
+    insets.top,
+    Platform.OS === "android" ? (StatusBar.currentHeight || 24) : 0
+  );
 
   // ── Navigation state ────────────────────────────────────────────────────────
   const nav = usePageNavigation();
@@ -285,10 +291,11 @@ function AppContent() {
   // ── RENDER: 3. Unauthenticated login ────────────────────────────────────────
   if (!auth.token) {
     return (
-      <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
+      <View style={[styles.safeArea, { backgroundColor: colors.background, paddingTop: topInset }]}>
         <StatusBar
           barStyle={isDark ? "light-content" : "dark-content"}
           backgroundColor={colors.background}
+          translucent={Platform.OS === "android"}
         />
         <GlobalAlertBanner
           banner={platformStatus?.alertBanner}
@@ -318,7 +325,7 @@ function AppContent() {
           error={auth.error}
           setError={auth.setError}
         />
-      </SafeAreaView>
+      </View>
     );
   }
 
@@ -362,8 +369,12 @@ function AppContent() {
   if (auth.currentUser?.role === "RENTER") {
     const renterTopBg = isDark ? "#060B1E" : "#0A1333";
     return (
-      <SafeAreaView style={[styles.safeArea, { backgroundColor: renterTopBg }]}>
-        <StatusBar barStyle="light-content" backgroundColor={renterTopBg} />
+      <View style={[styles.safeArea, { backgroundColor: renterTopBg, paddingTop: topInset }]}>
+        <StatusBar
+          barStyle="light-content"
+          backgroundColor={renterTopBg}
+          translucent={Platform.OS === "android"}
+        />
         <GlobalAlertBanner
           banner={platformStatus?.alertBanner}
           dismissed={dismissedBanner}
@@ -397,7 +408,7 @@ function AppContent() {
           isBiometricsSupported={biometrics.isHardwareAvailable && biometrics.isEnrolled}
           onToggleBiometrics={biometrics.toggleBiometrics}
         />
-      </SafeAreaView>
+      </View>
     );
   }
 

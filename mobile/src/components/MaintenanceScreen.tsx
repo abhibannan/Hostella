@@ -1,13 +1,14 @@
 import React from "react";
 import {
   ActivityIndicator,
-  SafeAreaView,
+  Platform,
   StatusBar,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "../contexts/ThemeContext";
 
@@ -25,9 +26,14 @@ export function MaintenanceScreen({
   onLogout,
 }: MaintenanceScreenProps) {
   const { colors, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
+  const topInset = Math.max(
+    insets.top,
+    Platform.OS === "android" ? (StatusBar.currentHeight || 24) : 0
+  );
 
   return (
-    <SafeAreaView
+    <View
       style={[
         styles.safeArea,
         {
@@ -35,12 +41,14 @@ export function MaintenanceScreen({
           justifyContent: "center",
           alignItems: "center",
           padding: 24,
+          paddingTop: topInset + 24,
         },
       ]}
     >
       <StatusBar
         barStyle={isDark ? "light-content" : "dark-content"}
         backgroundColor={colors.background}
+        translucent={Platform.OS === "android"}
       />
       <View style={[styles.maintenanceCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <View
@@ -85,7 +93,7 @@ export function MaintenanceScreen({
           </Text>
         </TouchableOpacity>
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 

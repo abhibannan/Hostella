@@ -1,12 +1,14 @@
 import React from "react";
 import {
   ActivityIndicator,
-  SafeAreaView,
+  Platform,
   StatusBar,
   StyleSheet,
   Text,
   TouchableOpacity,
+  View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { COLORS } from "../constants/theme";
 import { useTheme } from "../contexts/ThemeContext";
 
@@ -18,22 +20,29 @@ interface AuthLoadingScreenProps {
 
 export function AuthLoadingScreen({ mode, error, onCancel }: AuthLoadingScreenProps) {
   const { colors, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
+  const topInset = Math.max(
+    insets.top,
+    Platform.OS === "android" ? (StatusBar.currentHeight || 24) : 0
+  );
 
   if (mode === "init") {
     return (
-      <SafeAreaView
+      <View
         style={[
           styles.safeArea,
           {
             backgroundColor: colors.background,
             justifyContent: "center",
             alignItems: "center",
+            paddingTop: topInset,
           },
         ]}
       >
         <StatusBar
           barStyle={isDark ? "light-content" : "dark-content"}
           backgroundColor={colors.background}
+          translucent={Platform.OS === "android"}
         />
         <ActivityIndicator size="large" color={COLORS.primary} />
         <Text
@@ -47,12 +56,12 @@ export function AuthLoadingScreen({ mode, error, onCancel }: AuthLoadingScreenPr
         >
           Hostella
         </Text>
-      </SafeAreaView>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView
+    <View
       style={[
         styles.safeArea,
         {
@@ -60,12 +69,14 @@ export function AuthLoadingScreen({ mode, error, onCancel }: AuthLoadingScreenPr
           justifyContent: "center",
           alignItems: "center",
           paddingHorizontal: 24,
+          paddingTop: topInset,
         },
       ]}
     >
       <StatusBar
         barStyle={isDark ? "light-content" : "dark-content"}
         backgroundColor={colors.background}
+        translucent={Platform.OS === "android"}
       />
       <ActivityIndicator size="large" color={COLORS.primary} />
       <Text
@@ -122,7 +133,7 @@ export function AuthLoadingScreen({ mode, error, onCancel }: AuthLoadingScreenPr
           </Text>
         </TouchableOpacity>
       ) : null}
-    </SafeAreaView>
+    </View>
   );
 }
 

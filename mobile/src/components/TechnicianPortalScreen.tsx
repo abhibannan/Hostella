@@ -1,12 +1,13 @@
 import React from "react";
 import {
-  SafeAreaView,
+  Platform,
   StatusBar,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "../constants/theme";
 import { useTheme } from "../contexts/ThemeContext";
@@ -34,12 +35,18 @@ export function TechnicianPortalScreen({
   onLogout,
 }: TechnicianPortalScreenProps) {
   const { colors, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
+  const topInset = Math.max(
+    insets.top,
+    Platform.OS === "android" ? (StatusBar.currentHeight || 24) : 0
+  );
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
+    <View style={[styles.safeArea, { backgroundColor: colors.background, paddingTop: topInset }]}>
       <StatusBar
         barStyle={isDark ? "light-content" : "dark-content"}
         backgroundColor={colors.background}
+        translucent={Platform.OS === "android"}
       />
       <View style={{ flex: 1 }}>
         <View
@@ -121,7 +128,7 @@ export function TechnicianPortalScreen({
           isRepairPerson={true}
         />
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
