@@ -14,6 +14,7 @@ import {
   Tab,
 } from "../types";
 import { dashboardFrom, listFrom } from "../utils/formatters";
+import { markOnline } from "../services/offlineQueue";
 
 // ── SWR-style AsyncStorage cache helpers ────────────────────────────────────
 const CACHE_KEY = "@hosteldesk_hostel_cache";
@@ -199,6 +200,7 @@ export function useHostelData(authToken?: string | null): HostelDataState & Host
             : null;
         throw new Error(String(message || `Request failed: ${response.status}`));
       }
+      markOnline();
       return data as T;
     },
     [token],
@@ -214,7 +216,10 @@ export function useHostelData(authToken?: string | null): HostelDataState & Host
           headers: { Authorization: `Bearer ${token}` },
         });
         const data = await jsonResponse(resp);
-        if (resp.ok) setDashboard(dashboardFrom(data));
+        if (resp.ok) {
+          markOnline();
+          setDashboard(dashboardFrom(data));
+        }
       } catch {
         // Keep existing dashboard on transient failure
       }
@@ -232,6 +237,7 @@ export function useHostelData(authToken?: string | null): HostelDataState & Host
       }
       refreshBusy.current = true;
       lastFetchedHostel.current[hostelId] = now;
+      lastTabFetched.current["dashboard"] = now;
       try {
         const headers = { Authorization: `Bearer ${token}` };
 
@@ -240,6 +246,7 @@ export function useHostelData(authToken?: string | null): HostelDataState & Host
         try {
           const snapResp = await fetch(`${API_URL}/hostels/${hostelId}/snapshot`, { headers });
           if (snapResp.ok) {
+            markOnline();
             const snap = (await jsonResponse(snapResp)) as Record<string, any>;
             if (snap && Array.isArray(snap.rooms)) {
               usedSnapshot = true;

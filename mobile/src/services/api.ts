@@ -13,11 +13,17 @@ export const getBaseApiUrl = (): string => {
 
 export const API_URL = getBaseApiUrl();
 
+import { markOnline } from "./offlineQueue";
+
 let hasWarmedUp = false;
 export function warmupApi(): void {
   if (hasWarmedUp) return;
   hasWarmedUp = true;
-  fetch(`${API_URL}/health`, { method: "GET" }).catch(() => {});
+  fetch(`${API_URL}/health`, { method: "GET" })
+    .then((res) => {
+      if (res.ok) markOnline();
+    })
+    .catch(() => {});
   if (API_URL !== REMOTE_API_URL) {
     fetch(`${REMOTE_API_URL}/health`, { method: "GET" }).catch(() => {});
   }
@@ -49,5 +55,6 @@ export async function apiRequest(path: string, options: RequestInit = {}, token?
     const message = data && typeof data === "object" ? (data as Record<string, unknown>).message : null;
     throw new Error(String(message || `Request failed: ${response.status}`));
   }
+  markOnline();
   return data;
 }

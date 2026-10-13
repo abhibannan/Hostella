@@ -326,12 +326,16 @@ export function MoreScreen({
       <Group colors={colors} isDark={isDark}>
 
         <Row
-          icon={isDark ? "moon" : "sunny"}
-          title={isDark ? "Dark Mode" : "Light Mode"}
-          subtitle="Change the background color"
-          fg={isDark ? colors.purple : colors.warning}
-          bg={isDark ? colors.purpleLight : colors.warningLight}
+          icon={isDark ? "sunny" : "moon"}
+          title={isDark ? "Light Mode" : "Dark Mode"}
+          subtitle={isDark ? "Switch to light theme" : "Switch to dark theme"}
+          fg={isDark ? colors.warning : colors.purple}
+          bg={isDark ? colors.warningLight : colors.purpleLight}
           colors={colors}
+          onPress={() => {
+            haptic.selection();
+            onToggleTheme();
+          }}
           right={
             <Switch
               value={isDark}

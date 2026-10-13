@@ -9,6 +9,18 @@ interface OfflineBannerProps {
 
 export function OfflineBanner({ onSyncPress }: OfflineBannerProps) {
   const { isOnline, queueCount, checkNetworkStatus } = useOfflineSync();
+  const [startupGraceExpired, setStartupGraceExpired] = React.useState(false);
+
+  React.useEffect(() => {
+    // 8s grace period on initial launch to prevent flashing offline status during server warmup
+    const t = setTimeout(() => {
+      setStartupGraceExpired(true);
+    }, 8000);
+    return () => clearTimeout(t);
+  }, []);
+
+  // Never show offline warning during initial launch if there are no pending changes
+  if (!startupGraceExpired && queueCount === 0) return null;
 
   if (isOnline && queueCount === 0) return null;
 

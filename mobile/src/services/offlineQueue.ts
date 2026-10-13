@@ -14,7 +14,22 @@ export interface QueuedAction {
 const STORAGE_KEY = "@hosteldesk_offline_action_queue";
 
 let _isOnline = true;
+let consecutiveFailures = 0;
+const MAX_FAILURES_BEFORE_OFFLINE = 2;
 const listeners = new Set<(online: boolean, queueCount: number) => void>();
+
+/** Mark the client as explicitly online whenever any network request succeeds */
+export function markOnline(): void {
+  consecutiveFailures = 0;
+  if (!_isOnline) {
+    _isOnline = true;
+    notifyListeners();
+  }
+}
+
+export function isCurrentlyOnline(): boolean {
+  return _isOnline;
+}
 
 export async function getOfflineQueue(): Promise<QueuedAction[]> {
   try {
@@ -50,21 +65,49 @@ export async function clearOfflineQueue(): Promise<void> {
   notifyListeners();
 }
 
-/** Check server reachable */
+/** Check server reachable with generous 10s timeout and multi-check resilience */
+let isCheckingNetwork = false;
 export async function checkNetworkStatus(): Promise<boolean> {
+  if (isCheckingNetwork) return _isOnline;
+  isCheckingNetwork = true;
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3500);
+    const timeout = setTimeout(() => controller.abort(), 10000);
     const res = await fetch(`${API_URL}/health`, {
       method: "GET",
       signal: controller.signal,
     });
     clearTimeout(timeout);
-    _isOnline = res.ok;
+
+    if (res.ok) {
+      consecutiveFailures = 0;
+      if (!_isOnline) {
+        _isOnline = true;
+        notifyListeners();
+      }
+      return true;
+    } else {
+      consecutiveFailures++;
+    }
   } catch {
-    _isOnline = false;
+    consecutiveFailures++;
+  } finally {
+    isCheckingNetwork = false;
   }
-  notifyListeners();
+
+  // Only flip to offline mode after confirmed consecutive failures
+  if (consecutiveFailures >= MAX_FAILURES_BEFORE_OFFLINE) {
+    if (_isOnline) {
+      _isOnline = false;
+      notifyListeners();
+    }
+  } else {
+    // Schedule one immediate background retry in 2.5s before declaring offline
+    setTimeout(() => {
+      void checkNetworkStatus();
+    }, 2500);
+  }
+
   return _isOnline;
 }
 
@@ -118,7 +161,9 @@ export function useOfflineSync() {
     };
 
     listeners.add(handler);
-    void checkNetworkStatus();
+    const initialCheck = setTimeout(() => {
+      void checkNetworkStatus();
+    }, 1200);
 
     const interval = setInterval(() => {
       void checkNetworkStatus();
@@ -126,6 +171,7 @@ export function useOfflineSync() {
 
     return () => {
       listeners.delete(handler);
+      clearTimeout(initialCheck);
       clearInterval(interval);
     };
   }, []);

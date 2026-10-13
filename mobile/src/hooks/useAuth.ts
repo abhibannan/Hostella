@@ -18,6 +18,7 @@ import {
 } from "../services/api";
 import { Hostel, Renter, User } from "../types";
 import { listFrom, dashboardFrom } from "../utils/formatters";
+import { markOnline } from "../services/offlineQueue";
 
 const SESSION_CACHE_KEY = "@staynexa_auth_session_v1";
 const LEGACY_SESSION_CACHE_KEY = "@hosteldesk_auth_session_v1";
@@ -222,6 +223,8 @@ export function useAuth(callbacks?: AuthCallbacks): AuthActions {
         );
       }
 
+      markOnline();
+
       const me = meData as Record<string, any>;
       const user = (me.user || me) as User;
       const role = user?.role;
@@ -400,24 +403,28 @@ export function useAuth(callbacks?: AuthCallbacks): AuthActions {
             authInitialized.current = true;
 
             try {
-              const meResponse = await fetch(`${API_URL}/auth/me`, {
-                headers: { Authorization: `Bearer ${idToken}` },
-              });
+              const [meResponse, hostelsRes] = await Promise.all([
+                fetch(`${API_URL}/auth/me`, {
+                  headers: { Authorization: `Bearer ${idToken}` },
+                }),
+                fetch(`${API_URL}/hostels`, {
+                  headers: { Authorization: `Bearer ${idToken}` },
+                }).catch(() => null),
+              ]);
 
               if (meResponse.ok) {
+                markOnline();
                 const meData = (await jsonResponse(meResponse)) as any;
                 const user = (meData.user || meData) as User;
                 if (user && mounted) {
                   setToken(idToken);
                   setCurrentUser(user);
 
-                  const hostelsRes = await fetch(`${API_URL}/hostels`, {
-                    headers: { Authorization: `Bearer ${idToken}` },
-                  });
-                  const hostelsData = await jsonResponse(hostelsRes);
-                  const hostels = hostelsRes.ok
-                    ? listFrom<Hostel>(hostelsData, "hostels")
-                    : [];
+                  let hostels: Hostel[] = [];
+                  if (hostelsRes && hostelsRes.ok) {
+                    const hostelsData = await jsonResponse(hostelsRes);
+                    hostels = listFrom<Hostel>(hostelsData, "hostels");
+                  }
 
                   if (hostels.length > 0) {
                     callbacks?.onHostelsLoaded(hostels, idToken);
