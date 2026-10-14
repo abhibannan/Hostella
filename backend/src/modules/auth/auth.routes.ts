@@ -15,6 +15,7 @@ import {
   getPlatformConfig,
   updatePlatformConfig,
 } from "../../services/telemetry.service.js";
+import { getUserHostels } from "../hostels/hostels.routes.js";
 
 const router = Router();
 
@@ -97,7 +98,12 @@ router.post("/bootstrap", requireAuth, async (req, res, next) => {
 });
 
 router.get("/me", requireAuth, async (req, res) => {
-  res.status(200).json({ user: req.authUser });
+  try {
+    const hostels = await getUserHostels(req.authUser!);
+    res.status(200).json({ user: req.authUser, hostels });
+  } catch {
+    res.status(200).json({ user: req.authUser, hostels: [] });
+  }
 });
 
 const updateProfileSchema = z.object({
@@ -718,7 +724,24 @@ router.post("/forgot-password", async (req, res, next) => {
   }
 });
 
-// Resolve email from email OR mobile number
+interface PhoneLookupEntry {
+  email: string;
+  phone?: string | null;
+  role: string;
+  timestamp: number;
+}
+const phoneLookupCache = new Map<string, PhoneLookupEntry>();
+const PHONE_LOOKUP_TTL_MS = 10 * 60 * 1000;
+
+export function invalidatePhoneLookupCache(identifier?: string) {
+  if (identifier) {
+    phoneLookupCache.delete(identifier.trim().toLowerCase());
+  } else {
+    phoneLookupCache.clear();
+  }
+}
+
+// Resolve email from email OR mobile number (optimized with cache and batch queries)
 router.post("/login-lookup", async (req, res, next) => {
   try {
     const { identifier } = req.body;
@@ -727,6 +750,19 @@ router.post("/login-lookup", async (req, res, next) => {
       return;
     }
     const clean = identifier.trim();
+    const cacheKey = clean.toLowerCase();
+
+    // Fast path: in-memory cached lookup
+    const cached = phoneLookupCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < PHONE_LOOKUP_TTL_MS) {
+      res.json({
+        found: true,
+        email: cached.email,
+        phone: cached.phone,
+        role: cached.role,
+      });
+      return;
+    }
 
     // 1. Try finding by email
     if (clean.includes("@")) {
@@ -737,6 +773,13 @@ router.post("/login-lookup", async (req, res, next) => {
         .get();
       if (!emailSnap.empty && emailSnap.docs[0]) {
         const u = emailSnap.docs[0].data();
+        const entry: PhoneLookupEntry = {
+          email: u.email,
+          phone: u.phone,
+          role: u.role,
+          timestamp: Date.now(),
+        };
+        phoneLookupCache.set(cacheKey, entry);
         res.json({
           found: true,
           email: u.email,
@@ -747,7 +790,7 @@ router.post("/login-lookup", async (req, res, next) => {
       }
     }
 
-    // 2. Try finding by phone number
+    // 2. Try finding by phone number using fast batch "in" query
     const digitsOnly = clean.replace(/\D/g, "");
     const candidatePhones = Array.from(new Set([
       clean,
@@ -756,14 +799,24 @@ router.post("/login-lookup", async (req, res, next) => {
       digitsOnly.length >= 10 ? digitsOnly.slice(-10) : "",
     ])).filter(Boolean);
 
-    for (const p of candidatePhones) {
+    if (candidatePhones.length > 0) {
+      // Single query for all candidate formats
       const phoneSnap = await db
         .collection("users")
-        .where("phone", "==", p)
+        .where("phone", "in", candidatePhones.slice(0, 10))
         .limit(1)
         .get();
+
       if (!phoneSnap.empty && phoneSnap.docs[0]) {
         const u = phoneSnap.docs[0].data();
+        const entry: PhoneLookupEntry = {
+          email: u.email,
+          phone: u.phone,
+          role: u.role,
+          timestamp: Date.now(),
+        };
+        phoneLookupCache.set(cacheKey, entry);
+        if (digitsOnly) phoneLookupCache.set(digitsOnly, entry);
         res.json({
           found: true,
           email: u.email,
@@ -772,17 +825,24 @@ router.post("/login-lookup", async (req, res, next) => {
         });
         return;
       }
-    }
 
-    // 3. Also check repairPersons collection
-    for (const p of candidatePhones) {
+      // 3. Fallback check repairPersons collection with batch "in" query
       const rpSnap = await db
         .collection("repairPersons")
-        .where("phone", "==", p)
+        .where("phone", "in", candidatePhones.slice(0, 10))
         .limit(1)
         .get();
+
       if (!rpSnap.empty && rpSnap.docs[0]) {
         const rp = rpSnap.docs[0].data();
+        const entry: PhoneLookupEntry = {
+          email: rp.email,
+          phone: rp.phone,
+          role: "REPAIR_PERSON",
+          timestamp: Date.now(),
+        };
+        phoneLookupCache.set(cacheKey, entry);
+        if (digitsOnly) phoneLookupCache.set(digitsOnly, entry);
         res.json({
           found: true,
           email: rp.email,

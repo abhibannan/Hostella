@@ -15,18 +15,39 @@ export const API_URL = getBaseApiUrl();
 
 import { markOnline } from "./offlineQueue";
 
-let hasWarmedUp = false;
-export function warmupApi(): void {
-  if (hasWarmedUp) return;
-  hasWarmedUp = true;
+let lastWarmupAt = 0;
+const WARMUP_COOLDOWN_MS = 25 * 1000; // Allow warming up every 25 seconds
+
+export function warmupApi(force = false): void {
+  const now = Date.now();
+  if (!force && now - lastWarmupAt < WARMUP_COOLDOWN_MS) return;
+  lastWarmupAt = now;
+
   fetch(`${API_URL}/health`, { method: "GET" })
     .then((res) => {
       if (res.ok) markOnline();
     })
     .catch(() => {});
+
   if (API_URL !== REMOTE_API_URL) {
     fetch(`${REMOTE_API_URL}/health`, { method: "GET" }).catch(() => {});
   }
+}
+
+// Background keepalive to prevent Render free-tier cold spin down while app is open
+let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
+export function startApiKeepAlive(): () => void {
+  if (keepAliveTimer) return () => {};
+  keepAliveTimer = setInterval(() => {
+    warmupApi(true);
+  }, 3.5 * 60 * 1000); // Every 3.5 minutes
+
+  return () => {
+    if (keepAliveTimer) {
+      clearInterval(keepAliveTimer);
+      keepAliveTimer = null;
+    }
+  };
 }
 
 export async function parseJsonResponse(response: Response): Promise<unknown> {

@@ -91,6 +91,43 @@ export interface AuthCallbacks {
   onLogout: () => void;
 }
 
+// In-memory phone lookup cache to eliminate redundant network roundtrips
+const phoneToEmailCache = new Map<string, string>();
+
+async function resolveLoginEmail(rawInput: string): Promise<string> {
+  const clean = rawInput.trim();
+  if (clean.includes("@")) {
+    return clean.toLowerCase();
+  }
+
+  const digitsOnly = clean.replace(/\D/g, "");
+  const cached =
+    phoneToEmailCache.get(clean) ||
+    (digitsOnly ? phoneToEmailCache.get(digitsOnly) : null);
+  if (cached) {
+    return cached;
+  }
+
+  const lookupRes = await fetch(`${API_URL}/auth/login-lookup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ identifier: clean }),
+  });
+  const lookupData = (await jsonResponse(lookupRes)) as {
+    email?: string;
+    message?: string;
+  };
+  if (lookupRes.ok && lookupData.email) {
+    const resolved = lookupData.email.trim().toLowerCase();
+    phoneToEmailCache.set(clean, resolved);
+    if (digitsOnly) phoneToEmailCache.set(digitsOnly, resolved);
+    return resolved;
+  }
+  throw new Error(
+    lookupData.message || "No account found registered with this mobile number.",
+  );
+}
+
 export function useAuth(callbacks?: AuthCallbacks): AuthActions {
   const [token, setToken] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -118,6 +155,21 @@ export function useAuth(callbacks?: AuthCallbacks): AuthActions {
   const [renterPasswordInput, setRenterPasswordInput] = useState("");
 
   const authInitialized = useRef(false);
+
+  // Proactively pre-resolve mobile phone numbers to emails while the user types credentials
+  useEffect(() => {
+    const target = (loginRole === "RENTER" ? renterEmailInput : email).trim();
+    if (!target || target.includes("@")) return;
+
+    const digitsOnly = target.replace(/\D/g, "");
+    if (digitsOnly.length < 10) return;
+
+    const timer = setTimeout(() => {
+      void resolveLoginEmail(target).catch(() => {});
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [email, renterEmailInput, loginRole]);
 
   // Keep wrapped setter that updates AsyncStorage cache in the background
   const updateCurrentRenterDoc = useCallback((r: Renter | null) => {
@@ -168,7 +220,7 @@ export function useAuth(callbacks?: AuthCallbacks): AuthActions {
    * ============================================================
    * FAST AUTHENTICATION HANDLER
    * ============================================================
-   * Parallelizes /auth/me and /hostels to cut round-trip latency in half.
+   * Uses combined /auth/me payload (user + hostels in 1 network trip).
    * Immediately commits user and token so the UI transitions instantly.
    */
   const handleAuthenticatedUser = useCallback(
@@ -182,21 +234,22 @@ export function useAuth(callbacks?: AuthCallbacks): AuthActions {
         Authorization: `Bearer ${idToken}`,
       };
 
-      // 1. Fetch /auth/me and /hostels simultaneously in parallel
+      // 1. Fetch /auth/me (backend now returns user profile + hostels in single trip)
       const mePromise = (async () => {
         try {
           const res = await fetch(`${API_URL}/auth/me`, { headers });
           const data = await jsonResponse(res);
           return { res, data };
         } catch {
-          // Fast retry on cold start or network burp
-          await new Promise((r) => setTimeout(r, 800));
+          // Fast 100ms retry on cold start or network burp
+          await new Promise((r) => setTimeout(r, 100));
           const res = await fetch(`${API_URL}/auth/me`, { headers });
           const data = await jsonResponse(res);
           return { res, data };
         }
       })();
 
+      // Parallel fallback fetch for /hostels
       const hostelsPromise = fetch(`${API_URL}/hostels`, { headers })
         .then(async (r) => (r.ok ? listFrom<Hostel>(await jsonResponse(r), "hostels") : ([] as Hostel[])))
         .catch(() => [] as Hostel[]);
@@ -206,10 +259,17 @@ export function useAuth(callbacks?: AuthCallbacks): AuthActions {
       let hostelData: Hostel[] = [];
 
       try {
-        const [meResult, fetchedHostels] = await Promise.all([mePromise, hostelsPromise]);
+        const meResult = await mePromise;
         meResponse = meResult.res;
         meData = meResult.data;
-        hostelData = fetchedHostels;
+
+        // If backend returned hostels in /auth/me, use them immediately (0ms extra wait)
+        if (meData && Array.isArray(meData.hostels) && meData.hostels.length > 0) {
+          hostelData = listFrom<Hostel>(meData.hostels, "hostels");
+        } else {
+          // Fast fallback to hostels query
+          hostelData = await hostelsPromise;
+        }
       } catch {
         throw new Error("Unable to reach Hostella servers. Please check your internet connection.");
       }
@@ -247,14 +307,19 @@ export function useAuth(callbacks?: AuthCallbacks): AuthActions {
         setLoginRole("ADMIN");
       }
 
+      // 1. Immediately load hostels in application state
+      if (hostelData.length > 0) {
+        cbs?.onHostelsLoaded(hostelData, idToken);
+      }
+
       /*
-       * Save authenticated user and token immediately.
+       * 2. Commit authenticated user and token immediately to transition the screen
        */
       setToken(idToken);
       setCurrentUser(user);
       setError("");
 
-      // Persist session to AsyncStorage immediately for instant resume on app reopen
+      // 3. Persist session to AsyncStorage non-blockingly in the background (zero lag)
       const sessionToSave: CachedSession = {
         token: idToken,
         user,
@@ -262,15 +327,19 @@ export function useAuth(callbacks?: AuthCallbacks): AuthActions {
         hostels: hostelData,
         savedAt: Date.now(),
       };
-      await AsyncStorage.setItem(
+      void AsyncStorage.setItem(
         SESSION_CACHE_KEY,
         JSON.stringify(sessionToSave),
-      ).catch(() => { });
+      ).catch(() => {});
 
-      /*
-       * Load hostels in application state
-       */
-      cbs?.onHostelsLoaded(hostelData, idToken);
+      // Background fallback: if hostels list was initially empty, update once hostelsPromise arrives
+      if (hostelData.length === 0) {
+        hostelsPromise.then((fallbackHostels) => {
+          if (fallbackHostels && fallbackHostels.length > 0) {
+            cbs?.onHostelsLoaded(fallbackHostels, idToken);
+          }
+        }).catch(() => {});
+      }
 
       /*
        * Renter flow
@@ -297,7 +366,7 @@ export function useAuth(callbacks?: AuthCallbacks): AuthActions {
         .then((dashData) => {
           cbs?.onDashboardLoaded(dashboardFrom(dashData));
         })
-        .catch(() => { });
+        .catch(() => {});
     },
     [callbacks],
   );
@@ -656,25 +725,9 @@ export function useAuth(callbacks?: AuthCallbacks): AuthActions {
     let credential;
 
     try {
-      // If identifier has no @, resolve mobile number via backend
+      // If identifier has no @, resolve mobile number via fast cached lookup
       if (!rawInput.includes("@")) {
-        const lookupRes = await fetch(`${API_URL}/auth/login-lookup`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ identifier: rawInput }),
-        });
-        const lookupData = (await jsonResponse(lookupRes)) as {
-          email?: string;
-          message?: string;
-        };
-        if (lookupRes.ok && lookupData.email) {
-          resolvedEmail = lookupData.email.trim().toLowerCase();
-        } else {
-          throw new Error(
-            lookupData.message ||
-              "No account found registered with this mobile number.",
-          );
-        }
+        resolvedEmail = await resolveLoginEmail(rawInput);
       }
 
       try {
@@ -801,25 +854,9 @@ export function useAuth(callbacks?: AuthCallbacks): AuthActions {
     let credential;
 
     try {
-      // If identifier has no @, resolve mobile number via backend
+      // If identifier has no @, resolve mobile number via fast cached lookup
       if (!rawIdentifier.includes("@")) {
-        const lookupRes = await fetch(`${API_URL}/auth/login-lookup`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ identifier: rawIdentifier }),
-        });
-        const lookupData = (await jsonResponse(lookupRes)) as {
-          success?: boolean;
-          email?: string;
-          message?: string;
-        };
-        if (!lookupRes.ok || !lookupData.email) {
-          throw new Error(
-            lookupData.message ||
-              "No account found registered with this mobile number.",
-          );
-        }
-        resolvedEmail = (lookupData.email || "").trim().toLowerCase();
+        resolvedEmail = await resolveLoginEmail(rawIdentifier);
       }
 
       try {

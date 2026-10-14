@@ -6,6 +6,7 @@ import { requireHostelAccess, invalidateHostelAccessCache } from "../../middlewa
 import { writeAuditLog } from "../../utils/audit.js";
 import { registerCacheInvalidator, invalidateHostelCaches } from "../../utils/cache.js";
 import { computeDashboardFromDocs, dashboardStatsCache } from "../dashboard/dashboard.routes.js";
+import type { AuthUser } from "../../types/auth.js";
 
 const router = Router();
 
@@ -122,6 +123,133 @@ router.post("/", requireAuth, async (req, res, next) => {
   }
 });
 
+export async function getUserHostels(authUser: AuthUser): Promise<any[]> {
+  const cacheKey = `${authUser.id}_${authUser.role}`;
+  const cached = userHostelsCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < USER_HOSTELS_CACHE_TTL_MS) {
+    return cached.data;
+  }
+
+  let hostelsList: any[] = [];
+
+  if (authUser.role === "SUPER_ADMIN") {
+    const allHostelsSnap = await db.collection("hostels").get();
+    hostelsList = allHostelsSnap.docs.map((d) => ({
+      id: d.id,
+      name: d.data()?.name || "Unnamed Hostel",
+      city: d.data()?.city || "",
+      address: d.data()?.address || "",
+      totalRooms: d.data()?.totalRooms || 0,
+      ...d.data(),
+    }));
+  } else if (authUser.role === "ADMIN") {
+    const [assignments, ownedSnapshots] = await Promise.all([
+      db.collection("hostelAdmins").where("adminId", "==", authUser.id).get(),
+      db.collection("hostels").where("ownerId", "==", authUser.id).get(),
+    ]);
+
+    const hostelMap = new Map<string, any>();
+    ownedSnapshots.docs.forEach((doc) => hostelMap.set(doc.id, { id: doc.id, ...doc.data() }));
+
+    const assignedIds = assignments.docs
+      .map((d) => String(d.data().hostelId ?? d.id))
+      .filter((id) => !hostelMap.has(id));
+
+    if (assignedIds.length > 0) {
+      const refs = assignedIds.map((id) => db.collection("hostels").doc(id));
+      const snaps = await db.getAll(...refs);
+      snaps.forEach((s) => {
+        if (s.exists) hostelMap.set(s.id, { id: s.id, ...s.data() });
+      });
+    }
+
+    hostelsList = Array.from(hostelMap.values());
+  } else if (authUser.role === "PARTNER") {
+    const [assignments, userDoc] = await Promise.all([
+      db.collection("hostelPartners").where("userId", "==", authUser.id).where("status", "==", "ACTIVE").get(),
+      db.collection("users").doc(authUser.id).get(),
+    ]);
+
+    const assignedIds = new Set<string>();
+    assignments.docs.forEach((d) => {
+      const hId = d.data().hostelId;
+      if (hId) assignedIds.add(String(hId));
+    });
+
+    const uData = userDoc.data();
+    if (Array.isArray(uData?.hostelIds)) {
+      uData.hostelIds.forEach((id: string) => assignedIds.add(id));
+    }
+
+    if (assignedIds.size > 0) {
+      const refs = Array.from(assignedIds).map((id) => db.collection("hostels").doc(id));
+      const snaps = await db.getAll(...refs);
+      snaps.forEach((s) => {
+        if (s.exists) {
+          hostelsList.push({ id: s.id, ...s.data() });
+        }
+      });
+    }
+  } else if (authUser.role === "RENTER") {
+    const renterSnapshot = await db
+      .collection("renters")
+      .where("userId", "==", authUser.id)
+      .where("status", "==", "ACTIVE")
+      .limit(1)
+      .get();
+
+    if (!renterSnapshot.empty && renterSnapshot.docs[0]) {
+      const hostelId = renterSnapshot.docs[0].data().hostelId;
+      if (hostelId) {
+        const hostelSnapshot = await db
+          .collection("hostels")
+          .doc(String(hostelId))
+          .get();
+
+        if (hostelSnapshot.exists) {
+          hostelsList = [
+            {
+              id: hostelSnapshot.id,
+              ...hostelSnapshot.data(),
+            },
+          ];
+        }
+      }
+    }
+  } else if (authUser.role === "REPAIR_PERSON") {
+    const repairPersonSnap = await db
+      .collection("repairPersons")
+      .where("userId", "==", authUser.id)
+      .get();
+
+    const hostelIdsFromRepairPersons = repairPersonSnap.docs
+      .map((doc) => String(doc.data().hostelId))
+      .filter(Boolean);
+
+    const userHostelIds = Array.isArray(authUser.hostelIds)
+      ? authUser.hostelIds
+      : [];
+
+    const allHostelIds = Array.from(new Set([...hostelIdsFromRepairPersons, ...userHostelIds]));
+
+    if (allHostelIds.length > 0) {
+      const hostelSnapshots = await Promise.all(
+        allHostelIds.map((hId) => db.collection("hostels").doc(hId).get()),
+      );
+
+      hostelsList = hostelSnapshots
+        .filter((doc) => doc.exists)
+        .map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+    }
+  }
+
+  userHostelsCache.set(cacheKey, { data: hostelsList, timestamp: Date.now() });
+  return hostelsList;
+}
+
 router.get(
   "/",
   requireAuth,
@@ -134,178 +262,8 @@ router.get(
         return;
       }
 
-      const cacheKey = `${req.authUser.id}_${req.authUser.role}`;
-      const cached = userHostelsCache.get(cacheKey);
-      if (cached && Date.now() - cached.timestamp < USER_HOSTELS_CACHE_TTL_MS) {
-        res.json({ hostels: cached.data });
-        return;
-      }
-
-      const sendHostels = (hostelsList: any[]) => {
-        userHostelsCache.set(cacheKey, { data: hostelsList, timestamp: Date.now() });
-        res.json({ hostels: hostelsList });
-      };
-
-      if (req.authUser.role === "SUPER_ADMIN") {
-        const allHostelsSnap = await db.collection("hostels").get();
-        const hostels = allHostelsSnap.docs.map((d) => ({
-          id: d.id,
-          name: d.data()?.name || "Unnamed Hostel",
-          city: d.data()?.city || "",
-          address: d.data()?.address || "",
-          totalRooms: d.data()?.totalRooms || 0,
-          ...d.data(),
-        }));
-        sendHostels(hostels);
-        return;
-      }
-
-      if (req.authUser.role === "ADMIN") {
-        const [assignments, ownedSnapshots] = await Promise.all([
-          db.collection("hostelAdmins").where("adminId", "==", req.authUser.id).get(),
-          db.collection("hostels").where("ownerId", "==", req.authUser.id).get(),
-        ]);
-
-        const hostelMap = new Map<string, any>();
-        ownedSnapshots.docs.forEach((doc) => hostelMap.set(doc.id, { id: doc.id, ...doc.data() }));
-
-        const assignedIds = assignments.docs
-          .map((d) => String(d.data().hostelId ?? d.id))
-          .filter((id) => !hostelMap.has(id));
-
-        if (assignedIds.length > 0) {
-          const refs = assignedIds.map((id) => db.collection("hostels").doc(id));
-          const snaps = await db.getAll(...refs);
-          snaps.forEach((s) => {
-            if (s.exists) hostelMap.set(s.id, { id: s.id, ...s.data() });
-          });
-        }
-
-        // Strictly isolated: only return hostels owned or assigned to this admin
-        sendHostels(Array.from(hostelMap.values()));
-        return;
-      }
-
-      if (req.authUser.role === "PARTNER") {
-        const [assignments, userDoc] = await Promise.all([
-          db.collection("hostelPartners").where("userId", "==", req.authUser.id).where("status", "==", "ACTIVE").get(),
-          db.collection("users").doc(req.authUser.id).get(),
-        ]);
-
-        const assignedIds = new Set<string>();
-        assignments.docs.forEach((d) => {
-          const hId = d.data().hostelId;
-          if (hId) assignedIds.add(String(hId));
-        });
-
-        const uData = userDoc.data();
-        if (Array.isArray(uData?.hostelIds)) {
-          uData.hostelIds.forEach((id: string) => assignedIds.add(id));
-        }
-
-        if (assignedIds.size === 0) {
-          res.json({ hostels: [] });
-          return;
-        }
-
-        const refs = Array.from(assignedIds).map((id) => db.collection("hostels").doc(id));
-        const snaps = await db.getAll(...refs);
-        const hostels: any[] = [];
-        snaps.forEach((s) => {
-          if (s.exists) {
-            hostels.push({ id: s.id, ...s.data() });
-          }
-        });
-
-        sendHostels(hostels);
-        return;
-      }
-
-      if (req.authUser.role === "RENTER") {
-        const renterSnapshot = await db
-          .collection("renters")
-          .where("userId", "==", req.authUser.id)
-          .where("status", "==", "ACTIVE")
-          .limit(1)
-          .get();
-
-        if (renterSnapshot.empty) {
-          sendHostels([]);
-          return;
-        }
-
-        const renterDoc = renterSnapshot.docs[0];
-
-        if (!renterDoc) {
-          sendHostels([]);
-          return;
-        }
-
-        const hostelId = renterDoc.data().hostelId;
-
-        if (!hostelId) {
-          sendHostels([]);
-          return;
-        }
-
-        const hostelSnapshot = await db
-          .collection("hostels")
-          .doc(String(hostelId))
-          .get();
-
-        if (!hostelSnapshot.exists) {
-          sendHostels([]);
-          return;
-        }
-
-        sendHostels([
-          {
-            id: hostelSnapshot.id,
-            ...hostelSnapshot.data(),
-          },
-        ]);
-        return;
-      }
-
-      if (req.authUser.role === "REPAIR_PERSON") {
-        const repairPersonSnap = await db
-          .collection("repairPersons")
-          .where("userId", "==", req.authUser.id)
-          .get();
-
-        const hostelIdsFromRepairPersons = repairPersonSnap.docs
-          .map((doc) => String(doc.data().hostelId))
-          .filter(Boolean);
-
-        const userHostelIds = Array.isArray(req.authUser.hostelIds)
-          ? req.authUser.hostelIds
-          : [];
-
-        const allHostelIds = Array.from(new Set([...hostelIdsFromRepairPersons, ...userHostelIds]));
-
-        if (allHostelIds.length === 0) {
-          sendHostels([]);
-          return;
-        }
-
-        const hostelSnapshots = await Promise.all(
-          allHostelIds.map((hId) => db.collection("hostels").doc(hId).get()),
-        );
-
-        const hostels = hostelSnapshots
-          .filter((doc) => doc.exists)
-          .map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-          }));
-
-        sendHostels(hostels);
-        return;
-      }
-
-      res.status(403).json({
-        message: "Invalid user role",
-      });
+      const hostels = await getUserHostels(req.authUser);
+      res.json({ hostels });
     } catch (error) {
       next(error);
     }
@@ -400,7 +358,81 @@ router.get(
       const baseUrl = host ? `${protocol}://${host}` : defaultHost;
 
       const rooms = roomsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-      const renters = rentersSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+
+      const userIds = Array.from(
+        new Set(
+          rentersSnap.docs
+            .map((doc) => String(doc.data().userId || ""))
+            .filter(Boolean),
+        ),
+      );
+
+      const userDocs = userIds.length > 0
+        ? await db.getAll(...userIds.map((id) => db.collection("users").doc(id)))
+        : [];
+
+      const userMap = new Map<string, any>();
+      userDocs.forEach((doc) => {
+        if (doc.exists) userMap.set(doc.id, doc.data());
+      });
+
+      const roomMap = new Map<string, any>();
+      roomsSnap.docs.forEach((doc) => {
+        roomMap.set(doc.id, doc.data());
+      });
+
+      const renters = rentersSnap.docs.map((doc) => {
+        const data = doc.data();
+        const userData = userMap.get(String(data.userId));
+        const roomData = roomMap.get(String(data.roomId));
+
+        const fullName =
+          `${userData?.firstName ?? ""} ${userData?.lastName ?? ""}`.trim() ||
+          userData?.name ||
+          userData?.fullName ||
+          data.name ||
+          data.fullName ||
+          "";
+
+        const email = userData?.email || data.email || "";
+        const phone = userData?.phone || data.phone || "";
+
+        return {
+          id: doc.id,
+          ...data,
+          name: fullName || data.name || data.fullName || "Resident",
+          fullName: fullName || data.name || data.fullName || "Resident",
+          email,
+          phone,
+          user: userData
+            ? {
+                id: String(data.userId),
+                firstName: userData.firstName ?? "",
+                lastName: userData.lastName ?? "",
+                name: fullName,
+                fullName: fullName,
+                email: userData.email ?? "",
+                phone: userData.phone ?? "",
+                profilePhotoUrl: userData.profilePhotoUrl ?? null,
+                dateOfBirth: userData.dateOfBirth ?? null,
+                gender: userData.gender ?? null,
+                address: userData.address ?? null,
+                city: userData.city ?? null,
+                state: userData.state ?? null,
+                pincode: userData.pincode ?? null,
+                emergencyContactName: userData.emergencyContactName ?? null,
+                emergencyContactPhone: userData.emergencyContactPhone ?? null,
+              }
+            : null,
+          room: roomData
+            ? {
+                id: String(data.roomId),
+                roomNumber: roomData.roomNumber ?? "",
+                floor: roomData.floor ?? null,
+              }
+            : null,
+        };
+      });
       const fees = feesSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
       const payments = paymentsSnap.docs.map((doc) => {
         const data = doc.data();

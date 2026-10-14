@@ -1,16 +1,28 @@
 import { Renter, Dashboard } from "../types";
 
-export function getName(renter: Renter): string {
-  if (renter.name) return renter.name;
-  if (renter.fullName) return renter.fullName;
-  if (renter.user?.name) return renter.user.name;
-  if (renter.user?.fullName) return renter.user.fullName;
-  const first = renter.user?.firstName ?? "";
-  const last = renter.user?.lastName ?? "";
-  return `${first} ${last}`.trim() || renter.email || renter.user?.email || "Renter";
+export function getName(renter?: Renter | null): string {
+  if (!renter) return "Resident";
+  if (typeof renter === "string") return renter;
+  if (renter.name && renter.name.trim()) return renter.name.trim();
+  if (renter.fullName && renter.fullName.trim()) return renter.fullName.trim();
+  if (renter.user?.name && renter.user.name.trim()) return renter.user.name.trim();
+  if (renter.user?.fullName && renter.user.fullName.trim()) return renter.user.fullName.trim();
+  const first = (renter.user?.firstName || (renter as any).firstName || "").trim();
+  const last = (renter.user?.lastName || (renter as any).lastName || "").trim();
+  const combined = `${first} ${last}`.trim();
+  if (combined) return combined;
+  if ((renter as any).displayName && (renter as any).displayName.trim()) return (renter as any).displayName.trim();
+  if ((renter.user as any)?.displayName && (renter.user as any).displayName.trim()) return (renter.user as any).displayName.trim();
+  if (renter.email && renter.email.trim()) return renter.email.trim();
+  if (renter.user?.email && renter.user.email.trim()) return renter.user.email.trim();
+  if (renter.phone && renter.phone.trim()) return renter.phone.trim();
+  if (renter.user?.phone && renter.user.phone.trim()) return renter.user.phone.trim();
+  if (renter.guardianName && renter.guardianName.trim()) return `Resident (${renter.guardianName.trim()}'s ward)`;
+  return "Resident";
 }
 
-export function getEmail(renter: Renter): string {
+export function getEmail(renter?: Renter | null): string {
+  if (!renter) return "";
   return renter.email || renter.user?.email || "";
 }
 

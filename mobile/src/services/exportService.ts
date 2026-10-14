@@ -11,16 +11,23 @@ export interface FinancialSummary {
 }
 
 function resolveRenterName(r: Renter): string {
+  if (!r) return "Resident";
+  if (typeof r === "string") return r;
   if (r.name && r.name.trim()) return r.name.trim();
   if (r.fullName && r.fullName.trim()) return r.fullName.trim();
   if (r.user?.name && r.user.name.trim()) return r.user.name.trim();
   if (r.user?.fullName && r.user.fullName.trim()) return r.user.fullName.trim();
-  const first = r.user?.firstName?.trim() || "";
-  const last = r.user?.lastName?.trim() || "";
+  const first = (r.user?.firstName || (r as any).firstName || "").trim();
+  const last = (r.user?.lastName || (r as any).lastName || "").trim();
   const combined = `${first} ${last}`.trim();
   if (combined) return combined;
+  if ((r as any).displayName && (r as any).displayName.trim()) return (r as any).displayName.trim();
+  if ((r.user as any)?.displayName && (r.user as any).displayName.trim()) return (r.user as any).displayName.trim();
   if (r.email && r.email.trim()) return r.email.trim();
   if (r.user?.email && r.user.email.trim()) return r.user.email.trim();
+  if (r.phone && r.phone.trim()) return r.phone.trim();
+  if (r.user?.phone && r.user.phone.trim()) return r.user.phone.trim();
+  if (r.guardianName && r.guardianName.trim()) return `Resident (${r.guardianName.trim()}'s ward)`;
   return "Resident";
 }
 
@@ -51,7 +58,7 @@ export async function exportRenterListPDF(
       (r, idx) => {
         const name = resolveRenterName(r);
         const roomNum = resolveRoomNumber(r, rooms);
-        const phone = r.phone?.trim() || r.user?.phone?.trim() || "—";
+        const phone = r.phone?.trim() || r.user?.phone?.trim() || (r.guardianPhone ? `${r.guardianPhone} (G)` : "—");
         const email = r.email?.trim() || r.user?.email?.trim() || "—";
         const joined = r.joiningDate
           ? new Date(r.joiningDate).toLocaleDateString("en-IN", {

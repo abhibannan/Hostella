@@ -13,6 +13,7 @@ interface CachedAuth {
 const authCache = new Map<string, CachedAuth>();
 const AUTH_CACHE_TTL_MS = 3 * 60 * 1000; // 3 minutes TTL (Firebase ID tokens last 1 hr)
 const MAX_AUTH_CACHE_SIZE = 10000; // Easily accommodates thousands of concurrent users
+const inFlightTokenResolutions = new Map<string, Promise<{ authUser: AuthUser; firebaseUser: any } | null>>();
 
 export function invalidateAuthCache(userId?: string) {
   if (userId) {
@@ -33,9 +34,16 @@ export async function resolveAuthUserFromToken(token: string): Promise<{ authUse
     return { authUser: cached.authUser, firebaseUser: cached.firebaseUser };
   }
 
-  try {
-    const firebaseUser = await firebaseAuth.verifyIdToken(token);
-    let userDocument = null;
+  // Deduplicate concurrent in-flight resolutions for the same token (e.g. parallel /auth/me and /hostels)
+  const existingInFlight = inFlightTokenResolutions.get(token);
+  if (existingInFlight) {
+    return existingInFlight;
+  }
+
+  const resolvePromise = (async () => {
+    try {
+      const firebaseUser = await firebaseAuth.verifyIdToken(token);
+      let userDocument = null;
 
     // 1. Direct O(1) document lookup by UID (fastest path: ~15ms)
     const directDoc = await db.collection("users").doc(firebaseUser.uid).get();
@@ -111,10 +119,16 @@ export async function resolveAuthUserFromToken(token: string): Promise<{ authUse
     });
 
     return { authUser, firebaseUser };
-  } catch (err) {
-    console.error("TOKEN RESOLUTION ERROR:", err);
-    return null;
-  }
+    } catch (err) {
+      console.error("TOKEN RESOLUTION ERROR:", err);
+      return null;
+    } finally {
+      inFlightTokenResolutions.delete(token);
+    }
+  })();
+
+  inFlightTokenResolutions.set(token, resolvePromise);
+  return resolvePromise;
 }
 
 export async function requireAuth(

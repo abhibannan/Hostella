@@ -18,6 +18,7 @@ import { GRADIENTS, GOLD, RADIUS, shadow } from "../constants/theme";
 import { GradientButton } from "../components/common";
 import { HostellaBrand } from "../components/HostellaBrand";
 import { haptic } from "../utils/haptics";
+import { warmupApi } from "../services/api";
 
 interface LoginScreenProps {
   loginRole: "RENTER" | "ADMIN";
@@ -91,7 +92,10 @@ function Field({
           keyboardType={keyboardType}
           autoCapitalize="none"
           autoCorrect={false}
-          onFocus={() => setFocused(true)}
+          onFocus={() => {
+            setFocused(true);
+            warmupApi();
+          }}
           onBlur={() => setFocused(false)}
         />
         {trailing}
@@ -123,6 +127,11 @@ export function LoginScreen({
   const { colors, isDark } = useTheme();
   const [showRenterPassword, setShowRenterPassword] = useState(false);
 
+  // Proactively warm up backend connection on mount
+  useEffect(() => {
+    warmupApi(true);
+  }, []);
+
   // Sliding role indicator (optimized for instant snappy sliding)
   const [switchWidth, setSwitchWidth] = useState(0);
   const slide = useRef(new Animated.Value(loginRole === "RENTER" ? 0 : 1)).current;
@@ -142,6 +151,7 @@ export function LoginScreen({
     haptic.selection();
     setLoginRole(r);
     setError("");
+    warmupApi();
   };
 
   const heroColors = isDark ? GRADIENTS.heroDark : GRADIENTS.hero;

@@ -331,22 +331,20 @@ export function RentersScreen(props: RentersScreenProps) {
   const selectedRoom = currentHostelRooms.find((room) => room.id === renterRoomId);
   const editSelectedRoom = currentHostelRooms.find((room) => room.id === editRenterRoomId);
 
-  const [localSearch, setLocalSearch] = useState(renterSearch);
-
-  React.useEffect(() => {
-    setLocalSearch(renterSearch);
-  }, [renterSearch]);
+  const [searchQuery, setSearchQuery] = useState(renterSearch || "");
+  const [debouncedSearch, setDebouncedSearch] = useState(renterSearch || "");
 
   React.useEffect(() => {
     const timer = setTimeout(() => {
-      if (localSearch !== renterSearch) {
-        setRenterSearch(localSearch);
+      setDebouncedSearch(searchQuery);
+      if (setRenterSearch && searchQuery !== renterSearch) {
+        setRenterSearch(searchQuery);
       }
-    }, 150);
+    }, 100);
     return () => clearTimeout(timer);
-  }, [localSearch, renterSearch, setRenterSearch]);
+  }, [searchQuery, setRenterSearch, renterSearch]);
 
-  const normalizedSearch = localSearch.trim().toLowerCase();
+  const normalizedSearch = debouncedSearch.trim().toLowerCase();
 
   const filteredRenters = useMemo(() => {
     let result = currentHostelRenters.filter((renter) => {
@@ -605,201 +603,13 @@ export function RentersScreen(props: RentersScreenProps) {
     );
   }, [colors, isDark, rooms, onOpenRenterDetails, onOpenEditRenter, selectedHostel, handleCall, handleWhatsApp]);
 
-  const renterKeyExtractor = useCallback((item: Renter) => item.id, []);
-
-  const ListHeader = (
-    <View style={{ marginBottom: 10 }}>
-      {/* ── Deep Royal Navy Hero Banner (Matching Dashboard Theme) ── */}
-      <View style={styles.heroContainer}>
-        <LinearGradient
-          colors={isDark ? ["#060B1E", "#0B163B", "#132357"] : ["#0A1333", "#122566", "#1E3A8A"]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 0.35, y: 1 }}
-          style={styles.heroBannerGradient}
-        >
-          {/* Ambient Lighting Orbs */}
-          <View style={[styles.ambientOrb, { top: -30, right: -20, width: 160, height: 160, backgroundColor: "rgba(59, 130, 246, 0.22)" }]} />
-          <View style={[styles.ambientOrb, { top: 20, left: -40, width: 130, height: 130, backgroundColor: "rgba(139, 92, 246, 0.2)" }]} />
-
-          {/* Header Top Bar: Hostella Brand + Title + Property Badge + Action CTAs */}
-          <View style={{ marginBottom: 8 }}>
-            <HostellaBrand variant="full" colorScheme="dark" size="small" style={{ alignSelf: "flex-start" }} />
-          </View>
-          <View style={styles.heroHeaderRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.heroTitle}>Renters</Text>
-              <View style={styles.heroPropertyBadge}>
-                <View style={styles.activeDot} />
-                <Text style={styles.heroPropertyText} numberOfLines={1}>
-                  {selectedHostel?.name || "Hostella Property"}
-                </Text>
-              </View>
-            </View>
-
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
-              <TouchableOpacity
-                style={styles.heroGlassBtn}
-                onPress={handleExportRentersPDF}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="document-text-outline" size={14} color="#FFFFFF" />
-                <Text style={styles.heroGlassBtnText}>PDF</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.heroGlassBtn}
-                onPress={() => {
-                  haptic.light();
-                  setShowQRModal(true);
-                }}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="qr-code-outline" size={14} color="#FFFFFF" />
-                <Text style={styles.heroGlassBtnText}>QR</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.heroAddBtn}
-                onPress={() => {
-                  haptic.medium();
-                  onOpenRenterModal();
-                }}
-                activeOpacity={0.85}
-              >
-                <Ionicons name="person-add" size={15} color="#FFFFFF" />
-                <Text style={styles.heroAddBtnText}>Add</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* 2 Clean Translucent Metric Cards */}
-          <View style={styles.heroMetricsRow}>
-            <View style={[styles.heroMetricCard, { backgroundColor: "rgba(255, 255, 255, 0.12)" }]}>
-              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                <View style={[styles.heroMetricIconWrap, { backgroundColor: "rgba(255, 255, 255, 0.18)" }]}>
-                  <Ionicons name="people" size={16} color="#FFFFFF" />
-                </View>
-                <View style={[styles.miniStatBadge, { backgroundColor: "rgba(255, 255, 255, 0.18)" }]}>
-                  <Text style={[styles.miniStatText, { color: "#FFFFFF" }]}>All</Text>
-                </View>
-              </View>
-              <Text style={[styles.heroMetricNumber, { color: "#FFFFFF" }]}>{totalRentersCount}</Text>
-              <Text style={[styles.heroMetricLabel, { color: "rgba(255, 255, 255, 0.72)" }]}>Total Renters</Text>
-            </View>
-
-            <View style={[styles.heroMetricCard, { backgroundColor: "rgba(16, 185, 129, 0.18)" }]}>
-              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                <View style={[styles.heroMetricIconWrap, { backgroundColor: "rgba(16, 185, 129, 0.28)" }]}>
-                  <Ionicons name="shield-checkmark" size={16} color="#34D399" />
-                </View>
-                <View style={[styles.miniStatBadge, { backgroundColor: "rgba(16, 185, 129, 0.28)" }]}>
-                  <Text style={[styles.miniStatText, { color: "#34D399" }]}>
-                    {totalRentersCount > 0 ? `${Math.round((activeRentersCount / totalRentersCount) * 100)}%` : "0%"}
-                  </Text>
-                </View>
-              </View>
-              <Text style={[styles.heroMetricNumber, { color: "#34D399" }]}>{activeRentersCount}</Text>
-              <Text style={[styles.heroMetricLabel, { color: "rgba(255, 255, 255, 0.72)" }]}>Active Renters</Text>
-            </View>
-          </View>
-        </LinearGradient>
-
-        {/* Floating Search Input Box */}
-        <View style={styles.floatingSearchWrap}>
-          <View style={[styles.renterSearchBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Ionicons name="search-outline" size={18} color={colors.secondary} />
-            <TextInput
-              style={[styles.renterSearchInput, { color: colors.text }]}
-              value={localSearch}
-              onChangeText={setLocalSearch}
-              placeholder="Search by name, room, phone, email, guardian..."
-              placeholderTextColor={colors.secondary}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            {localSearch.length > 0 ? (
-              <TouchableOpacity onPress={() => { setLocalSearch(""); setRenterSearch(""); }} hitSlop={6}>
-                <Ionicons name="close-circle" size={18} color={colors.secondary} />
-              </TouchableOpacity>
-            ) : null}
-          </View>
-        </View>
-      </View>
-
-      {/* Filter Tabs & Section Header */}
-      <View style={{ paddingHorizontal: 16, marginTop: 6 }}>
-        {/* Filter Tabs: All, Active, Inactive */}
-        <View style={styles.filterTabsRow}>
-          {(["ALL", "ACTIVE", "INACTIVE"] as const).map((filter) => {
-            const isSelected = statusFilter === filter;
-            const count =
-              filter === "ALL"
-                ? totalRentersCount
-                : filter === "ACTIVE"
-                ? activeRentersCount
-                : inactiveRentersCount;
-
-            return (
-              <TouchableOpacity
-                key={filter}
-                style={[
-                  styles.filterTabPill,
-                  {
-                    backgroundColor: isSelected ? colors.primary : colors.card,
-                    borderColor: isSelected ? colors.primary : colors.border,
-                  },
-                ]}
-                onPress={() => {
-                  haptic.selection();
-                  setStatusFilter(filter);
-                }}
-              >
-                <Text
-                  style={[
-                    styles.filterTabPillText,
-                    { color: isSelected ? "#FFFFFF" : colors.secondary, fontWeight: isSelected ? "800" : "600" },
-                  ]}
-                >
-                  {filter === "ALL" ? "All" : filter === "ACTIVE" ? "Active" : "Inactive"}
-                </Text>
-                <View
-                  style={[
-                    styles.filterCountBadge,
-                    {
-                      backgroundColor: isSelected ? "rgba(255, 255, 255, 0.25)" : colors.surfaceSecondary,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.filterCountBadgeText,
-                      { color: isSelected ? "#FFFFFF" : colors.text },
-                    ]}
-                  >
-                    {count}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        <SectionTitle title={`Renters List (${filteredRenters.length})`} />
-      </View>
-    </View>
-  );
-
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      <FlatList
-        data={filteredRenters}
-        renderItem={renderRenterCard}
-        keyExtractor={renterKeyExtractor}
-        ListHeaderComponent={ListHeader}
-        initialNumToRender={10}
-        maxToRenderPerBatch={10}
-        windowSize={5}
-        removeClippedSubviews={Platform.OS === "android"}
+      <ScrollView
+        style={[styles.screen, { backgroundColor: colors.background }]}
+        contentContainerStyle={styles.screenContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -808,7 +618,197 @@ export function RentersScreen(props: RentersScreenProps) {
             tintColor={colors.primary}
           />
         }
-        ListEmptyComponent={
+      >
+        <View style={{ marginBottom: 10 }}>
+          {/* ── Deep Royal Navy Hero Banner (Matching Dashboard Theme) ── */}
+          <View style={styles.heroContainer}>
+            <LinearGradient
+              colors={isDark ? ["#060B1E", "#0B163B", "#132357"] : ["#0A1333", "#122566", "#1E3A8A"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 0.35, y: 1 }}
+              style={styles.heroBannerGradient}
+            >
+              {/* Ambient Lighting Orbs */}
+              <View style={[styles.ambientOrb, { top: -30, right: -20, width: 160, height: 160, backgroundColor: "rgba(59, 130, 246, 0.22)" }]} />
+              <View style={[styles.ambientOrb, { top: 20, left: -40, width: 130, height: 130, backgroundColor: "rgba(139, 92, 246, 0.2)" }]} />
+
+              {/* Header Top Bar: Hostella Brand + Title + Property Badge + Action CTAs */}
+              <View style={{ marginBottom: 8 }}>
+                <HostellaBrand variant="full" colorScheme="dark" size="small" style={{ alignSelf: "flex-start" }} />
+              </View>
+              <View style={styles.heroHeaderRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.heroTitle}>Renters</Text>
+                  <View style={styles.heroPropertyBadge}>
+                    <View style={styles.activeDot} />
+                    <Text style={styles.heroPropertyText} numberOfLines={1}>
+                      {selectedHostel?.name || "Hostella Property"}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
+                  <TouchableOpacity
+                    style={styles.heroGlassBtn}
+                    onPress={handleExportRentersPDF}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="document-text-outline" size={14} color="#FFFFFF" />
+                    <Text style={styles.heroGlassBtnText}>PDF</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.heroGlassBtn}
+                    onPress={() => {
+                      haptic.light();
+                      setShowQRModal(true);
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="qr-code-outline" size={14} color="#FFFFFF" />
+                    <Text style={styles.heroGlassBtnText}>QR</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.heroAddBtn}
+                    onPress={() => {
+                      haptic.medium();
+                      onOpenRenterModal();
+                    }}
+                    activeOpacity={0.85}
+                  >
+                    <Ionicons name="person-add" size={15} color="#FFFFFF" />
+                    <Text style={styles.heroAddBtnText}>Add</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* 2 Clean Translucent Metric Cards */}
+              <View style={styles.heroMetricsRow}>
+                <View style={[styles.heroMetricCard, { backgroundColor: "rgba(255, 255, 255, 0.12)" }]}>
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                    <View style={[styles.heroMetricIconWrap, { backgroundColor: "rgba(255, 255, 255, 0.18)" }]}>
+                      <Ionicons name="people" size={16} color="#FFFFFF" />
+                    </View>
+                    <View style={[styles.miniStatBadge, { backgroundColor: "rgba(255, 255, 255, 0.18)" }]}>
+                      <Text style={[styles.miniStatText, { color: "#FFFFFF" }]}>All</Text>
+                    </View>
+                  </View>
+                  <Text style={[styles.heroMetricNumber, { color: "#FFFFFF" }]}>{totalRentersCount}</Text>
+                  <Text style={[styles.heroMetricLabel, { color: "rgba(255, 255, 255, 0.72)" }]}>Total Renters</Text>
+                </View>
+
+                <View style={[styles.heroMetricCard, { backgroundColor: "rgba(16, 185, 129, 0.18)" }]}>
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                    <View style={[styles.heroMetricIconWrap, { backgroundColor: "rgba(16, 185, 129, 0.28)" }]}>
+                      <Ionicons name="shield-checkmark" size={16} color="#34D399" />
+                    </View>
+                    <View style={[styles.miniStatBadge, { backgroundColor: "rgba(16, 185, 129, 0.28)" }]}>
+                      <Text style={[styles.miniStatText, { color: "#34D399" }]}>
+                        {totalRentersCount > 0 ? `${Math.round((activeRentersCount / totalRentersCount) * 100)}%` : "0%"}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={[styles.heroMetricNumber, { color: "#34D399" }]}>{activeRentersCount}</Text>
+                  <Text style={[styles.heroMetricLabel, { color: "rgba(255, 255, 255, 0.72)" }]}>Active Renters</Text>
+                </View>
+              </View>
+            </LinearGradient>
+
+            {/* Floating Search Input Box */}
+            <View style={styles.floatingSearchWrap}>
+              <View style={[styles.renterSearchBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <Ionicons name="search-outline" size={18} color={colors.secondary} />
+                <TextInput
+                  style={[styles.renterSearchInput, { color: colors.text }]}
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  placeholder="Search by name, room, phone, email, guardian..."
+                  placeholderTextColor={colors.secondary}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  returnKeyType="search"
+                />
+                {searchQuery.length > 0 ? (
+                  <TouchableOpacity
+                    onPress={() => {
+                      setSearchQuery("");
+                      setDebouncedSearch("");
+                      if (setRenterSearch) setRenterSearch("");
+                    }}
+                    hitSlop={6}
+                  >
+                    <Ionicons name="close-circle" size={18} color={colors.secondary} />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            </View>
+          </View>
+
+          {/* Filter Tabs & Section Header */}
+          <View style={{ paddingHorizontal: 16, marginTop: 6 }}>
+            {/* Filter Tabs: All, Active, Inactive */}
+            <View style={styles.filterTabsRow}>
+              {(["ALL", "ACTIVE", "INACTIVE"] as const).map((filter) => {
+                const isSelected = statusFilter === filter;
+                const count =
+                  filter === "ALL"
+                    ? totalRentersCount
+                    : filter === "ACTIVE"
+                    ? activeRentersCount
+                    : inactiveRentersCount;
+
+                return (
+                  <TouchableOpacity
+                    key={filter}
+                    style={[
+                      styles.filterTabPill,
+                      {
+                        backgroundColor: isSelected ? colors.primary : colors.card,
+                        borderColor: isSelected ? colors.primary : colors.border,
+                      },
+                    ]}
+                    onPress={() => {
+                      haptic.selection();
+                      setStatusFilter(filter);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.filterTabPillText,
+                        { color: isSelected ? "#FFFFFF" : colors.secondary, fontWeight: isSelected ? "800" : "600" },
+                      ]}
+                    >
+                      {filter === "ALL" ? "All" : filter === "ACTIVE" ? "Active" : "Inactive"}
+                    </Text>
+                    <View
+                      style={[
+                        styles.filterCountBadge,
+                        {
+                          backgroundColor: isSelected ? "rgba(255, 255, 255, 0.25)" : colors.surfaceSecondary,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.filterCountBadgeText,
+                          { color: isSelected ? "#FFFFFF" : colors.text },
+                        ]}
+                      >
+                        {count}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <SectionTitle title={`Renters List (${filteredRenters.length})`} />
+          </View>
+        </View>
+
+        {/* Renters List */}
+        {filteredRenters.length === 0 ? (
           renters.length === 0 ? (
             <EmptyState
               icon="people-outline"
@@ -822,10 +822,14 @@ export function RentersScreen(props: RentersScreenProps) {
               description="Try a different name, phone number, email, guardian number or room number."
             />
           )
-        }
-        contentContainerStyle={styles.screenContent}
-        showsVerticalScrollIndicator={false}
-      />
+        ) : (
+          filteredRenters.map((renter) => (
+            <React.Fragment key={renter.id}>
+              {renderRenterCard({ item: renter })}
+            </React.Fragment>
+          ))
+        )}
+      </ScrollView>
 
       {/* RENTER DETAILS MODAL */}
       <Modal

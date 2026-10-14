@@ -1,10 +1,11 @@
 import { Share } from "react-native";
 import { Renter, Hostel } from "../types";
+import { getName } from "./formatters";
 
 export async function shareRenterDetails(renter: Renter, hostel?: Hostel | null): Promise<void> {
-  const name = renter.name || renter.fullName || "Resident";
+  const name = getName(renter);
   const room = renter.room?.roomNumber || "Unassigned Room";
-  const phone = renter.phone || "N/A";
+  const phone = renter.phone || renter.user?.phone || "N/A";
   const rent = renter.monthlyFee ? `₹${renter.monthlyFee.toLocaleString()}` : "Not specified";
   const deposit = renter.securityDeposit ? `₹${renter.securityDeposit.toLocaleString()}` : "Not specified";
   const joined = renter.joiningDate ? new Date(renter.joiningDate).toLocaleDateString() : "N/A";

@@ -32,7 +32,7 @@ import { ThemeProvider, useTheme } from "./src/contexts/ThemeContext";
 import { ToastProvider } from "./src/contexts/ToastContext";
 import { Hostel, Renter } from "./src/types";
 import { dashboardFrom } from "./src/utils/formatters";
-import { warmupApi } from "./src/services/api";
+import { warmupApi, startApiKeepAlive } from "./src/services/api";
 
 // Hooks
 import { useAuth, AuthCallbacks } from "./src/hooks/useAuth";
@@ -216,7 +216,11 @@ function AppContent() {
     auth.setCurrentRenterDoc,
   );
 
-  useEffect(() => { warmupApi(); }, []);
+  useEffect(() => {
+    warmupApi(true);
+    const stopKeepAlive = startApiKeepAlive();
+    return () => stopKeepAlive();
+  }, []);
 
   // ── Renter submit helpers ─────────────────────────────────────────────────────
   const handleRenterSubmitProof = useRenterProofSubmit(

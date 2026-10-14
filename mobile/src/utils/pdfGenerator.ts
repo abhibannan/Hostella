@@ -42,17 +42,24 @@ function generatedOn(): string {
   });
 }
 
-function getRenterName(renter: Renter): string {
+function getRenterName(renter?: Renter | null): string {
+  if (!renter) return "Resident";
+  if (typeof renter === "string") return renter;
   if (renter.name && renter.name.trim()) return renter.name.trim();
   if (renter.fullName && renter.fullName.trim()) return renter.fullName.trim();
   if (renter.user?.name && renter.user.name.trim()) return renter.user.name.trim();
   if (renter.user?.fullName && renter.user.fullName.trim()) return renter.user.fullName.trim();
-  const first = renter.user?.firstName?.trim() || "";
-  const last = renter.user?.lastName?.trim() || "";
+  const first = (renter.user?.firstName || (renter as any).firstName || "").trim();
+  const last = (renter.user?.lastName || (renter as any).lastName || "").trim();
   const combined = `${first} ${last}`.trim();
   if (combined) return combined;
+  if ((renter as any).displayName && (renter as any).displayName.trim()) return (renter as any).displayName.trim();
+  if ((renter.user as any)?.displayName && (renter.user as any).displayName.trim()) return (renter.user as any).displayName.trim();
   if (renter.email && renter.email.trim()) return renter.email.trim();
   if (renter.user?.email && renter.user.email.trim()) return renter.user.email.trim();
+  if (renter.phone && renter.phone.trim()) return renter.phone.trim();
+  if (renter.user?.phone && renter.user.phone.trim()) return renter.user.phone.trim();
+  if (renter.guardianName && renter.guardianName.trim()) return `Resident (${renter.guardianName.trim()}'s ward)`;
   return "Resident";
 }
 

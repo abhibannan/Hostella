@@ -424,11 +424,17 @@ router.post(
         .collection("renters")
         .doc();
 
+      const fullName = `${firstName} ${lastName ?? ""}`.trim();
+
       const renter = {
         id: renterRef.id,
         userId: userRef.id,
         hostelId,
         roomId,
+        name: fullName || "Resident",
+        fullName: fullName || "Resident",
+        email,
+        phone: phone ?? "",
         guardianName: guardianName ?? "",
         guardianPhone: guardianPhone ?? "",
         joiningDate,
@@ -705,11 +711,22 @@ router.post(
       const now =
         new Date().toISOString();
 
+      const userData = user.data();
+      const fullName =
+        `${userData?.firstName ?? ""} ${userData?.lastName ?? ""}`.trim() ||
+        userData?.name ||
+        userData?.fullName ||
+        "Resident";
+
       const renter = {
         id: renterRef.id,
         userId,
         hostelId,
         roomId,
+        name: fullName,
+        fullName: fullName,
+        email: userData?.email ?? "",
+        phone: userData?.phone ?? "",
         guardianPhone,
         joiningDate,
         monthlyFee,
@@ -815,14 +832,31 @@ router.get(
         const userData = userMap.get(String(data.userId));
         const roomData = roomMap.get(String(data.roomId));
 
+        const fullName =
+          `${userData?.firstName ?? ""} ${userData?.lastName ?? ""}`.trim() ||
+          userData?.name ||
+          userData?.fullName ||
+          data.name ||
+          data.fullName ||
+          "";
+
+        const email = userData?.email || data.email || "";
+        const phone = userData?.phone || data.phone || "";
+
         return {
           id: doc.id,
           ...data,
+          name: fullName || data.name || data.fullName || "Resident",
+          fullName: fullName || data.name || data.fullName || "Resident",
+          email,
+          phone,
           user: userData
             ? {
                 id: String(data.userId),
                 firstName: userData.firstName ?? "",
                 lastName: userData.lastName ?? "",
+                name: fullName,
+                fullName: fullName,
                 email: userData.email ?? "",
                 phone: userData.phone ?? "",
               }
@@ -929,10 +963,23 @@ router.get(
           .get(),
       ]);
 
+      const userData = user.exists ? user.data() : null;
+      const fullName =
+        `${userData?.firstName ?? ""} ${userData?.lastName ?? ""}`.trim() ||
+        userData?.name ||
+        userData?.fullName ||
+        data?.name ||
+        data?.fullName ||
+        "Resident";
+
       res.json({
         renter: {
           id: renter.id,
           ...data,
+          name: fullName,
+          fullName: fullName,
+          email: userData?.email ?? data?.email ?? null,
+          phone: userData?.phone ?? data?.phone ?? null,
 
           user: user.exists
             ? {
@@ -1168,6 +1215,23 @@ router.patch(
       if (parsed.data.status !== undefined) renterUpdates.status = parsed.data.status;
       if (parsed.data.guardianName !== undefined) renterUpdates.guardianName = parsed.data.guardianName;
       if (parsed.data.guardianPhone !== undefined) renterUpdates.guardianPhone = parsed.data.guardianPhone;
+      if (parsed.data.phone !== undefined) renterUpdates.phone = parsed.data.phone;
+
+      if (parsed.data.firstName !== undefined || parsed.data.lastName !== undefined) {
+        const uId = renter.data()?.userId;
+        let first = parsed.data.firstName;
+        let last = parsed.data.lastName;
+        if ((first === undefined || last === undefined) && uId) {
+          const uDoc = await db.collection("users").doc(uId).get();
+          if (first === undefined) first = uDoc.data()?.firstName ?? "";
+          if (last === undefined) last = uDoc.data()?.lastName ?? "";
+        }
+        const updatedName = `${first ?? ""} ${last ?? ""}`.trim();
+        if (updatedName) {
+          renterUpdates.name = updatedName;
+          renterUpdates.fullName = updatedName;
+        }
+      }
 
       await renterRef.update(renterUpdates);
 

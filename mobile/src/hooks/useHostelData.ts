@@ -262,6 +262,25 @@ export function useHostelData(authToken?: string | null): HostelDataState & Host
               setPayments(fetchedPayments);
               setRepairs(fetchedRepairs);
 
+              // Auto-enrich if snapshot renters lack user profiles/names
+              const needsRenterEnrichment = fetchedRenters.length > 0 && fetchedRenters.some((r) => !r.name && !r.fullName && !r.user?.firstName);
+              if (needsRenterEnrichment) {
+                fetch(`${API_URL}/hostels/${hostelId}/renters`, { headers })
+                  .then(jsonResponse)
+                  .then((renterData) => {
+                    if (renterData) {
+                      const enriched = listFrom<Renter>(renterData, "renters").filter(
+                        (r) => !r.hostelId || r.hostelId === hostelId,
+                      );
+                      if (enriched.length > 0) {
+                        setRenters(enriched);
+                        lastTabFetched.current["renters"] = Date.now();
+                      }
+                    }
+                  })
+                  .catch(() => {});
+              }
+
               if (snap.dashboard) {
                 setDashboard(dashboardFrom(snap.dashboard));
               } else {
@@ -271,7 +290,7 @@ export function useHostelData(authToken?: string | null): HostelDataState & Host
               const now = Date.now();
               lastTabFetched.current["dashboard"] = now;
               lastTabFetched.current["rooms"] = now;
-              lastTabFetched.current["renters"] = now;
+              lastTabFetched.current["renters"] = needsRenterEnrichment ? 0 : now;
               lastTabFetched.current["payments"] = now;
               lastTabFetched.current["fees"] = now;
               lastTabFetched.current["repairs"] = now;

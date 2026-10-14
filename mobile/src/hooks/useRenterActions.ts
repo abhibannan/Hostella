@@ -209,8 +209,12 @@ export function useRenterActions(cb: RenterActionsCallbacks) {
   function openEditRenter(renter: Renter) {
     setShowRenterDetailsModal(false);
     setEditingRenterId(renter.id);
-    setEditFirstName(renter.user?.firstName || "");
-    setEditLastName(renter.user?.lastName || "");
+    const fullNameStr = (renter.name || renter.fullName || "").trim();
+    const nameParts = fullNameStr.split(/\s+/);
+    const inferredFirst = nameParts[0] || "";
+    const inferredLast = nameParts.slice(1).join(" ") || "";
+    setEditFirstName(renter.user?.firstName || (renter as any).firstName || inferredFirst);
+    setEditLastName(renter.user?.lastName || (renter as any).lastName || inferredLast);
     setEditPhone(renter.user?.phone || renter.phone || "");
     setEditGuardianName(renter.guardianName || "");
     setEditGuardianPhone(renter.guardianPhone || "");
